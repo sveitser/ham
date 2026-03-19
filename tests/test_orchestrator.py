@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -11,7 +12,7 @@ from ham.actions import (
     PromptConfirmation,
 )
 from ham.git import worktree_path
-from ham.hyprland import HyprlandWindow
+from ham.hyprland import HyprlandWindow, windows_in_path
 from ham.orchestrator import plan_close, plan_delete, plan_open
 
 REPO = Path("/fake/repo")
@@ -216,3 +217,27 @@ def test_open_exec_is_last() -> None:
     )
     assert isinstance(actions[-1], ExecProcess)
     assert all(not isinstance(a, ExecProcess) for a in actions[:-1])
+
+
+def test_close_own_window_last() -> None:
+    """Regression: own terminal must be closed last to avoid killing ham mid-run."""
+    wt_path = worktree_path(REPO, "feat")
+    own_pid = 100
+    other_pid = 200
+    windows = [
+        HyprlandWindow(
+            address="0x1",
+            pid=own_pid,
+            class_name="alacritty",
+            title="t",
+            cwds=[wt_path],
+        ),
+        HyprlandWindow(
+            address="0x2", pid=other_pid, class_name="emacs", title="t", cwds=[wt_path]
+        ),
+    ]
+    with patch("ham.hyprland._ancestor_pids", return_value={own_pid}):
+        result = windows_in_path(windows, wt_path)
+    assert len(result) == 2
+    assert result[-1].pid == own_pid
+    assert result[0].pid == other_pid
