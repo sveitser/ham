@@ -1,0 +1,11 @@
+.DS_Store
+.idea
+*.log
+tmp/
+
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.coverage
+.pre-commit-config.yaml
+.claude/
