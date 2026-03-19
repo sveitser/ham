@@ -5,7 +5,7 @@ from pathlib import Path
 
 from ham import git, hyprland
 from ham.executor import execute
-from ham.git import worktree_path
+from ham.git import DATA_DIR, worktree_path
 from ham.orchestrator import plan_close, plan_delete, plan_open
 
 log = logging.getLogger(__name__)
@@ -27,10 +27,18 @@ def main() -> None:
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
+    level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(
-        level=logging.DEBUG if args.verbose else logging.INFO,
-        format="%(name)s %(levelname)s %(message)s",
+        level=level,
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%H:%M:%S",
     )
+    logfile = DATA_DIR / "ham.log"
+    logfile.parent.mkdir(parents=True, exist_ok=True)
+    fh = logging.FileHandler(logfile)
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(fh)
 
     if args.command in ("close", "delete"):
         if args.repo_path and args.branch_name:
