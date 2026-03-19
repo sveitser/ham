@@ -8,6 +8,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SwitchWorkspace,
 )
 from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow, windows_in_path
@@ -82,3 +83,24 @@ def plan_delete(
 
     actions.append(GitWorktreeRemove(repo=repo, worktree_path=wt_path))
     return actions
+
+
+def plan_switch(
+    repo: Path,
+    branch: str,
+    *,
+    workspace_id: int | None,
+    free_workspace: int,
+    is_git_repo: bool,
+    worktree_exists: bool,
+    branch_exists: bool,
+) -> list[Action]:
+    if workspace_id is not None:
+        return [SwitchWorkspace(workspace_id=workspace_id)]
+    return [SwitchWorkspace(workspace_id=free_workspace)] + plan_open(
+        repo,
+        branch,
+        is_git_repo=is_git_repo,
+        worktree_exists=worktree_exists,
+        branch_exists=branch_exists,
+    )

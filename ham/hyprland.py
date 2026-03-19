@@ -15,6 +15,7 @@ class HyprlandWindow:
     class_name: str
     title: str
     cwds: list[Path] = field(default_factory=list)
+    workspace_id: int = 0
 
 
 def _resolve_cwds(pid: int) -> list[Path]:  # pragma: no cover
@@ -48,9 +49,33 @@ def get_windows() -> list[HyprlandWindow]:  # pragma: no cover
             class_name=client["class"],
             title=client["title"],
             cwds=_resolve_cwds(client["pid"]),
+            workspace_id=client["workspace"]["id"],
         )
         for client in clients
     ]
+
+
+def get_workspace_for_windows(windows: list[HyprlandWindow]) -> int | None:
+    """Given matched windows, return their workspace ID."""
+    if not windows:
+        return None
+    return windows[0].workspace_id
+
+
+def find_free_workspace() -> int:  # pragma: no cover
+    """Return lowest unused workspace ID >= 1."""
+    result = subprocess.run(
+        ["hyprctl", "workspaces", "-j"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    workspaces = json.loads(result.stdout)
+    used = {ws["id"] for ws in workspaces}
+    workspace_id = 1
+    while workspace_id in used:
+        workspace_id += 1
+    return workspace_id
 
 
 def _ancestor_pids() -> dict[int, int]:  # pragma: no cover

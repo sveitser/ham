@@ -42,3 +42,8 @@ class ExecProcess(Action):
 @dataclass
 class PromptConfirmation(Action):
     message: str
+
+
+@dataclass
+class SwitchWorkspace(Action):
+    workspace_id: int

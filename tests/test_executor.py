@@ -12,6 +12,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SwitchWorkspace,
 )
 from ham.executor import execute
 
@@ -121,6 +122,16 @@ def test_prompt_confirmation_no(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("builtins.input", lambda _: "n")
     with pytest.raises(SystemExit, match="aborted"):
         execute([PromptConfirmation(message="proceed?")])
+
+
+def test_switch_workspace() -> None:
+    action = SwitchWorkspace(workspace_id=3)
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    mock_run.assert_called_once_with(
+        ["hyprctl", "dispatch", "workspace", "3"],
+        check=True,
+    )
 
 
 def test_unknown_action_raises() -> None:

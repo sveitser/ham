@@ -50,6 +50,25 @@ def is_dirty(worktree_path: Path) -> tuple[bool, str]:  # pragma: no cover
     return (bool(output), output)
 
 
+def _repo_path_from_worktree(wt_dir: Path) -> Path | None:  # pragma: no cover
+    """Resolve the parent repo path from a worktree directory via git-common-dir."""
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(wt_dir),
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return Path(result.stdout.strip()).parent
+
+
 def resolve_from_cwd() -> tuple[Path, str] | None:  # pragma: no cover
     """If cwd is inside a ham worktree, return (repo_path, sanitized_branch)."""
     cwd = Path.cwd().resolve()
@@ -61,25 +80,47 @@ def resolve_from_cwd() -> tuple[Path, str] | None:  # pragma: no cover
     if len(parts) < 2:
         return None
     repo_id, branch = parts[0], parts[1]
-    # Find the actual repo by checking git's common dir
     wt = DATA_DIR / repo_id / branch
-    result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(wt),
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    repo = _repo_path_from_worktree(wt)
+    if repo is None:
         return None
-    # git-common-dir gives e.g. /home/lulu/r/foo/.git
-    repo = Path(result.stdout.strip()).parent
     return (repo, branch)
+
+
+def resolve_worktree(selection: str) -> tuple[Path, str] | None:  # pragma: no cover
+    """Resolve a 'repo_name/branch' selection to (repo_path, branch). Returns None if not found."""
+    parts = selection.split("/", 1)
+    if len(parts) != 2:
+        return None
+    repo_name, branch = parts
+    for repo_dir in DATA_DIR.iterdir():
+        if not repo_dir.is_dir():
+            continue
+        branch_dir = repo_dir / branch
+        if not branch_dir.is_dir():
+            continue
+        repo_path = _repo_path_from_worktree(branch_dir)
+        if repo_path is not None and repo_path.name == repo_name:
+            return (repo_path, branch)
+    return None
+
+
+def list_worktrees() -> list[tuple[str, str]]:  # pragma: no cover
+    """Scan DATA_DIR for worktree dirs, resolve repo name via git. Returns [(repo_name, branch), ...]."""
+    if not DATA_DIR.exists():
+        return []
+    results = []
+    for repo_dir in sorted(DATA_DIR.iterdir()):
+        if not repo_dir.is_dir():
+            continue
+        for branch_dir in sorted(repo_dir.iterdir()):
+            if not branch_dir.is_dir():
+                continue
+            repo_path = _repo_path_from_worktree(branch_dir)
+            if repo_path is None:
+                continue
+            results.append((repo_path.name, branch_dir.name))
+    return results
 
 
 def is_git_repo(path: Path) -> bool:  # pragma: no cover

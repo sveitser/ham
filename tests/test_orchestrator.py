@@ -10,10 +10,11 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SwitchWorkspace,
 )
 from ham.git import worktree_path
-from ham.hyprland import HyprlandWindow, windows_in_path
-from ham.orchestrator import plan_close, plan_delete, plan_open
+from ham.hyprland import HyprlandWindow, get_workspace_for_windows, windows_in_path
+from ham.orchestrator import plan_close, plan_delete, plan_open, plan_switch
 
 REPO = Path("/fake/repo")
 
@@ -276,3 +277,49 @@ def test_close_ancestors_ordered_by_distance() -> None:
     assert result[0].pid == other_pid
     assert result[1].pid == distant_pid
     assert result[2].pid == close_pid
+
+
+def test_switch_focus_existing_ok() -> None:
+    """REQ:switch-focus-existing: windows exist, produces SwitchWorkspace."""
+    actions = plan_switch(
+        REPO,
+        "feat",
+        workspace_id=3,
+        free_workspace=5,
+        is_git_repo=True,
+        worktree_exists=True,
+        branch_exists=True,
+    )
+    assert actions == [SwitchWorkspace(workspace_id=3)]
+
+
+def test_switch_open_new_ok() -> None:
+    """REQ:switch-open-new: no windows, produces SwitchWorkspace + open actions."""
+    actions = plan_switch(
+        REPO,
+        "feat",
+        workspace_id=None,
+        free_workspace=5,
+        is_git_repo=True,
+        worktree_exists=True,
+        branch_exists=True,
+    )
+    assert isinstance(actions[0], SwitchWorkspace)
+    assert actions[0].workspace_id == 5
+    assert len(actions) > 1
+
+
+def test_get_workspace_for_windows_empty() -> None:
+    assert get_workspace_for_windows([]) is None
+
+
+def test_get_workspace_for_windows_returns_first() -> None:
+    windows = [
+        HyprlandWindow(
+            address="0x1", pid=1, class_name="alacritty", title="t", workspace_id=3
+        ),
+        HyprlandWindow(
+            address="0x2", pid=2, class_name="emacs", title="t", workspace_id=5
+        ),
+    ]
+    assert get_workspace_for_windows(windows) == 3

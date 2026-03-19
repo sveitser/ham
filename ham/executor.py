@@ -10,6 +10,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SwitchWorkspace,
 )
 
 
@@ -63,6 +64,12 @@ def _execute_one(action: Action) -> None:
                     os.execvp(fallback_cmd[0], fallback_cmd)
             else:
                 os.execvp(cmd[0], cmd)
+
+        case SwitchWorkspace(workspace_id):
+            subprocess.run(
+                ["hyprctl", "dispatch", "workspace", str(workspace_id)],
+                check=True,
+            )
 
         case PromptConfirmation(message):
             print(message)
