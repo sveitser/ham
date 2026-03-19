@@ -53,12 +53,14 @@ def get_windows() -> list[HyprlandWindow]:  # pragma: no cover
     ]
 
 
-def _ancestor_pids() -> set[int]:  # pragma: no cover
-    """Walk up from our PID to init, collecting all ancestor PIDs."""
-    pids = set()
+def _ancestor_pids() -> dict[int, int]:  # pragma: no cover
+    """Walk up from our PID to init. Returns {pid: distance} where 0 is self."""
+    pids = {}
     pid = os.getpid()
+    distance = 0
     while pid > 1:
-        pids.add(pid)
+        pids[pid] = distance
+        distance += 1
         try:
             stat = Path(f"/proc/{pid}/stat").read_text()
             ppid = int(stat.split(") ")[1].split()[1])
@@ -72,14 +74,18 @@ def windows_in_path(
     windows: list[HyprlandWindow], path: Path, own_last: bool = True
 ) -> list[HyprlandWindow]:
     resolved = path.resolve()
-    ancestors = _ancestor_pids() if own_last else set()
+    ancestors = _ancestor_pids() if own_last else {}
     matched = []
     deferred = []
     for w in windows:
         if any(cwd.is_relative_to(resolved) for cwd in w.cwds):
             log.debug("match: %s %s pid=%d", w.address, w.class_name, w.pid)
             if own_last and w.pid in ancestors:
-                log.debug("own window, deferring: %s", w.address)
+                log.debug(
+                    "ancestor window (dist=%d), deferring: %s",
+                    ancestors[w.pid],
+                    w.address,
+                )
                 deferred.append(w)
             else:
                 matched.append(w)
@@ -87,5 +93,6 @@ def windows_in_path(
             log.debug(
                 "skip: %s %s pid=%d cwds=%s", w.address, w.class_name, w.pid, w.cwds
             )
+    deferred.sort(key=lambda w: ancestors.get(w.pid, 0), reverse=True)
     matched.extend(deferred)
     return matched
