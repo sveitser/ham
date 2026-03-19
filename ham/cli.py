@@ -1,4 +1,5 @@
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -6,6 +7,8 @@ from ham import git, hyprland
 from ham.executor import execute
 from ham.git import worktree_path
 from ham.orchestrator import plan_close, plan_delete, plan_open
+
+log = logging.getLogger(__name__)
 
 
 def main() -> None:
@@ -21,23 +24,33 @@ def main() -> None:
         sub.add_argument("repo_path", type=Path, nargs="?")
         sub.add_argument("branch_name", nargs="?")
 
+    parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(name)s %(levelname)s %(message)s",
+    )
 
     if args.command in ("close", "delete"):
         if args.repo_path and args.branch_name:
             repo = args.repo_path.resolve()
             branch = args.branch_name
+            log.debug("explicit args: repo=%s branch=%s", repo, branch)
         else:
             resolved = git.resolve_from_cwd()
             if resolved is None:
                 print("not in a ham worktree and no args given", file=sys.stderr)
                 raise SystemExit(1)
             repo, branch = resolved
+            log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
         wt_path = worktree_path(repo, branch)
     else:
         repo = args.repo_path.resolve()
         branch = args.branch_name
         wt_path = worktree_path(repo, branch)
+
+    log.debug("worktree_path=%s", wt_path)
 
     match args.command:
         case "open":

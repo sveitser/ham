@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 
@@ -12,8 +13,13 @@ from ham.actions import (
 )
 
 
+log = logging.getLogger(__name__)
+
+
 def execute(actions: list[Action]) -> None:
+    log.info("%d actions to execute", len(actions))
     for action in actions:
+        log.debug("executing %s", action)
         _execute_one(action)
 
 

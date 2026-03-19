@@ -1,7 +1,10 @@
 import json
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -51,4 +54,13 @@ def get_windows() -> list[HyprlandWindow]:  # pragma: no cover
 
 def windows_in_path(windows: list[HyprlandWindow], path: Path) -> list[HyprlandWindow]:
     resolved = path.resolve()
-    return [w for w in windows if any(cwd.is_relative_to(resolved) for cwd in w.cwds)]
+    matched = []
+    for w in windows:
+        if any(cwd.is_relative_to(resolved) for cwd in w.cwds):
+            log.debug("match: %s %s pid=%d", w.address, w.class_name, w.pid)
+            matched.append(w)
+        else:
+            log.debug(
+                "skip: %s %s pid=%d cwds=%s", w.address, w.class_name, w.pid, w.cwds
+            )
+    return matched
