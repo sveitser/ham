@@ -4,7 +4,7 @@
   inputs.git-hooks.url = "github:cachix/git-hooks.nix";
   inputs.git-hooks.inputs.nixpkgs.follows = "nixpkgs";
 
-  outputs = { nixpkgs, git-hooks, ... }:
+  outputs = { self, nixpkgs, git-hooks, ... }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ];
       eachSystem = f: nixpkgs.lib.genAttrs systems (system:
@@ -37,6 +37,15 @@
         };
       };
     in {
+      overlays.default = final: prev: {
+        ham-unwrapped = final.python3Packages.callPackage ./nix/package.nix { };
+      };
+
+      packages = eachSystem (pkgs: system: {
+        ham-unwrapped = pkgs.python3Packages.callPackage ./nix/package.nix { };
+        default = self.packages.${system}.ham-unwrapped;
+      });
+
       checks = eachSystem (pkgs: system: {
         pre-commit-check = git-hooks.lib.${system}.run {
           src = ./.;
