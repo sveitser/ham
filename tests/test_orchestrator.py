@@ -75,14 +75,14 @@ def test_close_match_windows_ok() -> None:
     wt_path = worktree_path(REPO, "feat")
     windows = [
         HyprlandWindow(
-            address="0x1", pid=1, class_name="alacritty", title="t", cwd=wt_path
+            address="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
         ),
         HyprlandWindow(
             address="0x2",
             pid=2,
             class_name="alacritty",
             title="t",
-            cwd=wt_path / "sub",
+            cwds=[wt_path / "sub"],
         ),
     ]
     actions = plan_close(REPO, "feat", windows)
@@ -97,11 +97,28 @@ def test_close_skip_unrelated_ok() -> None:
             pid=1,
             class_name="alacritty",
             title="t",
-            cwd=Path("/tmp/other"),
+            cwds=[Path("/tmp/other")],
         ),
     ]
     actions = plan_close(REPO, "feat", windows)
     assert len(actions) == 0
+
+
+def test_close_matches_descendant_cwd() -> None:
+    """Regression: terminal whose own cwd is ~ but has a child (claude) in worktree."""
+    wt_path = worktree_path(REPO, "feat")
+    windows = [
+        HyprlandWindow(
+            address="0x1",
+            pid=1,
+            class_name="alacritty",
+            title="t",
+            cwds=[Path("/home/user"), wt_path],
+        ),
+    ]
+    actions = plan_close(REPO, "feat", windows)
+    assert len(actions) == 1
+    assert isinstance(actions[0], CloseWindow)
 
 
 def test_delete_clean_remove_ok() -> None:
@@ -130,7 +147,7 @@ def test_delete_closes_windows() -> None:
     wt_path = worktree_path(REPO, "with-windows")
     windows = [
         HyprlandWindow(
-            address="0x1", pid=1, class_name="alacritty", title="t", cwd=wt_path
+            address="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
         ),
     ]
     actions = plan_delete(
