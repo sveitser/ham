@@ -9,6 +9,7 @@ from ham.actions import (
     LaunchProcess,
     PromptConfirmation,
 )
+from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow
 from ham.orchestrator import plan_close, plan_delete, plan_open
 
@@ -32,9 +33,19 @@ def test_open_reuse_worktree_ok() -> None:
     assert len(actions) == 3
 
 
-def test_open_launch_apps_ok() -> None:
+def test_open_launch_apps_new_worktree() -> None:
     actions = plan_open(
         REPO, "feat", is_git_repo=True, worktree_exists=False, branch_exists=False
+    )
+    launches = [a for a in actions if isinstance(a, LaunchProcess)]
+    assert launches[0].cmd == ["alacritty", "-e", "claude"]
+    assert launches[1].cmd == ["alacritty"]
+    assert launches[2].cmd == ["emacs", "."]
+
+
+def test_open_launch_apps_existing_worktree() -> None:
+    actions = plan_open(
+        REPO, "feat", is_git_repo=True, worktree_exists=True, branch_exists=True
     )
     launches = [a for a in actions if isinstance(a, LaunchProcess)]
     assert launches[0].cmd == ["alacritty", "-e", "claude", "--continue"]
@@ -52,21 +63,21 @@ def test_open_sanitize_branch_ok() -> None:
     )
     wt_add = actions[0]
     assert isinstance(wt_add, GitWorktreeAdd)
-    assert wt_add.worktree_path == REPO / ".wt" / "test-sanitize"
+    assert wt_add.worktree_path == worktree_path(REPO, "test/sanitize")
 
 
 def test_close_match_windows_ok() -> None:
-    worktree_path = REPO / ".wt" / "feat"
+    wt_path = worktree_path(REPO, "feat")
     windows = [
         HyprlandWindow(
-            address="0x1", pid=1, class_name="alacritty", title="t", cwd=worktree_path
+            address="0x1", pid=1, class_name="alacritty", title="t", cwd=wt_path
         ),
         HyprlandWindow(
             address="0x2",
             pid=2,
             class_name="alacritty",
             title="t",
-            cwd=worktree_path / "sub",
+            cwd=wt_path / "sub",
         ),
     ]
     actions = plan_close(REPO, "feat", windows)
@@ -133,11 +144,11 @@ def test_delete_worktree_missing_fails() -> None:
         plan_delete(REPO, "nonexistent", worktree_exists=False, dirty=False, status="")
 
 
-def test_open_continue_flag_ok() -> None:
+def test_open_no_continue_flag_new_worktree() -> None:
     actions = plan_open(
         REPO, "feat", is_git_repo=True, worktree_exists=False, branch_exists=False
     )
     claude_launch = [
         a for a in actions if isinstance(a, LaunchProcess) and "claude" in a.cmd
     ][0]
-    assert "--continue" in claude_launch.cmd
+    assert "--continue" not in claude_launch.cmd

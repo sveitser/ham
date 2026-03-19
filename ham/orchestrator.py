@@ -8,7 +8,7 @@ from ham.actions import (
     LaunchProcess,
     PromptConfirmation,
 )
-from ham.git import sanitize_branch
+from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow, windows_in_path
 
 
@@ -23,27 +23,28 @@ def plan_open(
     if not is_git_repo:
         raise ValueError(f"not a git repository: {repo}")
 
-    sanitized = sanitize_branch(branch)
-    worktree_path = repo / ".wt" / sanitized
+    wt_path = worktree_path(repo, branch)
     actions: list[Action] = []
 
     if not worktree_exists:
         actions.append(
             GitWorktreeAdd(
                 repo=repo,
-                worktree_path=worktree_path,
+                worktree_path=wt_path,
                 branch=branch,
                 create_branch=not branch_exists,
             )
         )
 
+    claude_cmd = ["alacritty", "-e", "claude"]
+    if worktree_exists:
+        claude_cmd.append("--continue")
+
     actions.extend(
         [
-            LaunchProcess(
-                cmd=["alacritty", "-e", "claude", "--continue"], cwd=worktree_path
-            ),
-            LaunchProcess(cmd=["alacritty"], cwd=worktree_path),
-            LaunchProcess(cmd=["emacs", "."], cwd=worktree_path),
+            LaunchProcess(cmd=claude_cmd, cwd=wt_path),
+            LaunchProcess(cmd=["alacritty"], cwd=wt_path),
+            LaunchProcess(cmd=["emacs", "."], cwd=wt_path),
         ]
     )
 
@@ -51,9 +52,8 @@ def plan_open(
 
 
 def plan_close(repo: Path, branch: str, windows: list[HyprlandWindow]) -> list[Action]:
-    sanitized = sanitize_branch(branch)
-    worktree_path = repo / ".wt" / sanitized
-    matching = windows_in_path(windows, worktree_path)
+    wt_path = worktree_path(repo, branch)
+    matching = windows_in_path(windows, wt_path)
     return [CloseWindow(address=w.address) for w in matching]
 
 
@@ -65,16 +65,15 @@ def plan_delete(
     dirty: bool,
     status: str,
 ) -> list[Action]:
-    if not worktree_exists:
-        sanitized = sanitize_branch(branch)
-        raise ValueError(f"worktree does not exist: {repo / '.wt' / sanitized}")
+    wt_path = worktree_path(repo, branch)
 
-    sanitized = sanitize_branch(branch)
-    worktree_path = repo / ".wt" / sanitized
+    if not worktree_exists:
+        raise ValueError(f"worktree does not exist: {wt_path}")
+
     actions: list[Action] = []
 
     if dirty:
         actions.append(PromptConfirmation(message=status))
 
-    actions.append(GitWorktreeRemove(repo=repo, worktree_path=worktree_path))
+    actions.append(GitWorktreeRemove(repo=repo, worktree_path=wt_path))
     return actions

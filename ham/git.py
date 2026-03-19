@@ -1,9 +1,19 @@
+import os
 import subprocess
 from pathlib import Path
+
+DATA_DIR = (
+    Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "ham"
+)
 
 
 def sanitize_branch(branch: str) -> str:
     return branch.replace("/", "-")
+
+
+def worktree_path(repo: Path, branch: str) -> Path:
+    repo_id = str(repo.resolve()).strip("/").replace("/", "-")
+    return DATA_DIR / repo_id / sanitize_branch(branch)
 
 
 def worktree_exists(repo: Path, worktree_path: Path) -> bool:  # pragma: no cover

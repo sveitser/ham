@@ -3,6 +3,7 @@ from pathlib import Path
 
 from ham import git, hyprland
 from ham.executor import execute
+from ham.git import worktree_path
 from ham.orchestrator import plan_close, plan_delete, plan_open
 
 
@@ -18,8 +19,7 @@ def main() -> None:
     args = parser.parse_args()
     repo = args.repo_path.resolve()
     branch = args.branch_name
-    sanitized = git.sanitize_branch(branch)
-    worktree_path = repo / ".wt" / sanitized
+    wt_path = worktree_path(repo, branch)
 
     match args.command:
         case "open":
@@ -27,18 +27,18 @@ def main() -> None:
                 repo,
                 branch,
                 is_git_repo=git.is_git_repo(repo),
-                worktree_exists=git.worktree_exists(repo, worktree_path),
+                worktree_exists=git.worktree_exists(repo, wt_path),
                 branch_exists=git.branch_exists(repo, branch),
             )
         case "close":
             windows = hyprland.get_windows()
             actions = plan_close(repo, branch, windows)
         case "delete":
-            dirty, status = git.is_dirty(worktree_path)
+            dirty, status = git.is_dirty(wt_path)
             actions = plan_delete(
                 repo,
                 branch,
-                worktree_exists=git.worktree_exists(repo, worktree_path),
+                worktree_exists=git.worktree_exists(repo, wt_path),
                 dirty=dirty,
                 status=status,
             )
