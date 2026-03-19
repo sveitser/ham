@@ -74,19 +74,18 @@ def windows_in_path(
     resolved = path.resolve()
     ancestors = _ancestor_pids() if own_last else set()
     matched = []
-    own_window = None
+    deferred = []
     for w in windows:
         if any(cwd.is_relative_to(resolved) for cwd in w.cwds):
             log.debug("match: %s %s pid=%d", w.address, w.class_name, w.pid)
             if own_last and w.pid in ancestors:
                 log.debug("own window, deferring: %s", w.address)
-                own_window = w
+                deferred.append(w)
             else:
                 matched.append(w)
         else:
             log.debug(
                 "skip: %s %s pid=%d cwds=%s", w.address, w.class_name, w.pid, w.cwds
             )
-    if own_window:
-        matched.append(own_window)
+    matched.extend(deferred)
     return matched

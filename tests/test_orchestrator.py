@@ -241,3 +241,35 @@ def test_close_own_window_last() -> None:
     assert len(result) == 2
     assert result[-1].pid == own_pid
     assert result[0].pid == other_pid
+
+
+def test_close_multiple_ancestor_windows_all_deferred() -> None:
+    """Regression: multiple ancestor windows must all be closed, not just the last."""
+    wt_path = worktree_path(REPO, "feat")
+    ancestor1 = 100
+    ancestor2 = 101
+    other_pid = 200
+    windows = [
+        HyprlandWindow(
+            address="0x1",
+            pid=ancestor1,
+            class_name="alacritty",
+            title="t",
+            cwds=[wt_path],
+        ),
+        HyprlandWindow(
+            address="0x2", pid=other_pid, class_name="emacs", title="t", cwds=[wt_path]
+        ),
+        HyprlandWindow(
+            address="0x3",
+            pid=ancestor2,
+            class_name="alacritty",
+            title="t",
+            cwds=[wt_path],
+        ),
+    ]
+    with patch("ham.hyprland._ancestor_pids", return_value={ancestor1, ancestor2}):
+        result = windows_in_path(windows, wt_path)
+    assert len(result) == 3
+    assert result[0].pid == other_pid
+    assert {w.pid for w in result[1:]} == {ancestor1, ancestor2}
