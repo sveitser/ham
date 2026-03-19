@@ -1,8 +1,10 @@
+import os
 import subprocess
 
 from ham.actions import (
     Action,
     CloseWindow,
+    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -46,6 +48,10 @@ def _execute_one(action: Action) -> None:
                 ["hyprctl", "dispatch", "closewindow", f"address:{address}"],
                 check=True,
             )
+
+        case ExecProcess(cmd, cwd):
+            os.chdir(cwd)
+            os.execvp(cmd[0], cmd)
 
         case PromptConfirmation(message):
             print(message)

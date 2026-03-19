@@ -6,6 +6,7 @@ import pytest
 from ham.actions import (
     Action,
     CloseWindow,
+    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -69,6 +70,17 @@ def test_close_window() -> None:
         ["hyprctl", "dispatch", "closewindow", "address:0xdead"],
         check=True,
     )
+
+
+def test_exec_process() -> None:
+    action = ExecProcess(cmd=["claude", "--continue"], cwd=WT)
+    with (
+        patch("ham.executor.os.chdir") as mock_chdir,
+        patch("ham.executor.os.execvp") as mock_execvp,
+    ):
+        execute([action])
+    mock_chdir.assert_called_once_with(WT)
+    mock_execvp.assert_called_once_with("claude", ["claude", "--continue"])
 
 
 def test_prompt_confirmation_yes(monkeypatch: pytest.MonkeyPatch) -> None:

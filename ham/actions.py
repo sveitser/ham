@@ -33,5 +33,11 @@ class CloseWindow(Action):
 
 
 @dataclass
+class ExecProcess(Action):
+    cmd: list[str]
+    cwd: Path
+
+
+@dataclass
 class PromptConfirmation(Action):
     message: str

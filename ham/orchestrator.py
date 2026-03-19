@@ -3,6 +3,7 @@ from pathlib import Path
 from ham.actions import (
     Action,
     CloseWindow,
+    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -36,15 +37,15 @@ def plan_open(
             )
         )
 
-    claude_cmd = ["alacritty", "-e", "claude"]
+    claude_cmd = ["claude"]
     if worktree_exists:
         claude_cmd.append("--continue")
 
     actions.extend(
         [
-            LaunchProcess(cmd=claude_cmd, cwd=wt_path),
             LaunchProcess(cmd=["alacritty"], cwd=wt_path),
             LaunchProcess(cmd=["emacs", "."], cwd=wt_path),
+            ExecProcess(cmd=claude_cmd, cwd=wt_path),
         ]
     )
 

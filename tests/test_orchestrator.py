@@ -4,6 +4,7 @@ import pytest
 
 from ham.actions import (
     CloseWindow,
+    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -22,7 +23,7 @@ def test_open_create_worktree_ok() -> None:
     )
     assert isinstance(actions[0], GitWorktreeAdd)
     assert actions[0].create_branch is True
-    assert len([a for a in actions if isinstance(a, LaunchProcess)]) == 3
+    assert len([a for a in actions if isinstance(a, LaunchProcess)]) == 2
 
 
 def test_open_reuse_worktree_ok() -> None:
@@ -38,9 +39,11 @@ def test_open_launch_apps_new_worktree() -> None:
         REPO, "feat", is_git_repo=True, worktree_exists=False, branch_exists=False
     )
     launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert launches[0].cmd == ["alacritty", "-e", "claude"]
-    assert launches[1].cmd == ["alacritty"]
-    assert launches[2].cmd == ["emacs", "."]
+    assert launches[0].cmd == ["alacritty"]
+    assert launches[1].cmd == ["emacs", "."]
+    exec_action = actions[-1]
+    assert isinstance(exec_action, ExecProcess)
+    assert exec_action.cmd == ["claude"]
 
 
 def test_open_launch_apps_existing_worktree() -> None:
@@ -48,9 +51,11 @@ def test_open_launch_apps_existing_worktree() -> None:
         REPO, "feat", is_git_repo=True, worktree_exists=True, branch_exists=True
     )
     launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert launches[0].cmd == ["alacritty", "-e", "claude", "--continue"]
-    assert launches[1].cmd == ["alacritty"]
-    assert launches[2].cmd == ["emacs", "."]
+    assert launches[0].cmd == ["alacritty"]
+    assert launches[1].cmd == ["emacs", "."]
+    exec_action = actions[-1]
+    assert isinstance(exec_action, ExecProcess)
+    assert exec_action.cmd == ["claude", "--continue"]
 
 
 def test_open_sanitize_branch_ok() -> None:
@@ -144,11 +149,18 @@ def test_delete_worktree_missing_fails() -> None:
         plan_delete(REPO, "nonexistent", worktree_exists=False, dirty=False, status="")
 
 
-def test_open_no_continue_flag_new_worktree() -> None:
+def test_open_no_continue_new_worktree() -> None:
     actions = plan_open(
         REPO, "feat", is_git_repo=True, worktree_exists=False, branch_exists=False
     )
-    claude_launch = [
-        a for a in actions if isinstance(a, LaunchProcess) and "claude" in a.cmd
-    ][0]
-    assert "--continue" not in claude_launch.cmd
+    exec_action = actions[-1]
+    assert isinstance(exec_action, ExecProcess)
+    assert "--continue" not in exec_action.cmd
+
+
+def test_open_exec_is_last() -> None:
+    actions = plan_open(
+        REPO, "feat", is_git_repo=True, worktree_exists=False, branch_exists=False
+    )
+    assert isinstance(actions[-1], ExecProcess)
+    assert all(not isinstance(a, ExecProcess) for a in actions[:-1])
