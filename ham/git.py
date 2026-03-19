@@ -50,6 +50,38 @@ def is_dirty(worktree_path: Path) -> tuple[bool, str]:  # pragma: no cover
     return (bool(output), output)
 
 
+def resolve_from_cwd() -> tuple[Path, str] | None:  # pragma: no cover
+    """If cwd is inside a ham worktree, return (repo_path, sanitized_branch)."""
+    cwd = Path.cwd().resolve()
+    try:
+        rel = cwd.relative_to(DATA_DIR.resolve())
+    except ValueError:
+        return None
+    parts = rel.parts
+    if len(parts) < 2:
+        return None
+    repo_id, branch = parts[0], parts[1]
+    # Find the actual repo by checking git's common dir
+    wt = DATA_DIR / repo_id / branch
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(wt),
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    # git-common-dir gives e.g. /home/lulu/r/foo/.git
+    repo = Path(result.stdout.strip()).parent
+    return (repo, branch)
+
+
 def is_git_repo(path: Path) -> bool:  # pragma: no cover
     result = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--git-dir"],

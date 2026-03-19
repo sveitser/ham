@@ -105,18 +105,44 @@ def test_close_skip_unrelated_ok() -> None:
 
 
 def test_delete_clean_remove_ok() -> None:
-    actions = plan_delete(REPO, "cleanup", worktree_exists=True, dirty=False, status="")
+    actions = plan_delete(
+        REPO, "cleanup", worktree_exists=True, dirty=False, status="", windows=[]
+    )
     assert len(actions) == 1
     assert isinstance(actions[0], GitWorktreeRemove)
 
 
 def test_delete_dirty_prompt_ok() -> None:
     actions = plan_delete(
-        REPO, "dirty", worktree_exists=True, dirty=True, status="?? untracked.txt"
+        REPO,
+        "dirty",
+        worktree_exists=True,
+        dirty=True,
+        status="?? untracked.txt",
+        windows=[],
     )
     assert len(actions) == 2
     assert isinstance(actions[0], PromptConfirmation)
     assert isinstance(actions[1], GitWorktreeRemove)
+
+
+def test_delete_closes_windows() -> None:
+    wt_path = worktree_path(REPO, "with-windows")
+    windows = [
+        HyprlandWindow(
+            address="0x1", pid=1, class_name="alacritty", title="t", cwd=wt_path
+        ),
+    ]
+    actions = plan_delete(
+        REPO,
+        "with-windows",
+        worktree_exists=True,
+        dirty=False,
+        status="",
+        windows=windows,
+    )
+    assert isinstance(actions[0], CloseWindow)
+    assert isinstance(actions[-1], GitWorktreeRemove)
 
 
 def test_open_invalid_repo_fails() -> None:
@@ -146,7 +172,14 @@ def test_close_no_windows_ok() -> None:
 
 def test_delete_worktree_missing_fails() -> None:
     with pytest.raises(ValueError, match="worktree does not exist"):
-        plan_delete(REPO, "nonexistent", worktree_exists=False, dirty=False, status="")
+        plan_delete(
+            REPO,
+            "nonexistent",
+            worktree_exists=False,
+            dirty=False,
+            status="",
+            windows=[],
+        )
 
 
 def test_open_no_continue_new_worktree() -> None:

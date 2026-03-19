@@ -65,13 +65,14 @@ def plan_delete(
     worktree_exists: bool,
     dirty: bool,
     status: str,
+    windows: list[HyprlandWindow],
 ) -> list[Action]:
     wt_path = worktree_path(repo, branch)
 
     if not worktree_exists:
         raise ValueError(f"worktree does not exist: {wt_path}")
 
-    actions: list[Action] = []
+    actions: list[Action] = plan_close(repo, branch, windows)
 
     if dirty:
         actions.append(PromptConfirmation(message=status))
