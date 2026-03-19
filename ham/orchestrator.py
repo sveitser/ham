@@ -37,15 +37,18 @@ def plan_open(
             )
         )
 
-    claude_cmd = ["claude"]
     if worktree_exists:
-        claude_cmd.append("--continue")
+        exec_action = ExecProcess(
+            cmd=["claude", "--continue"], cwd=wt_path, fallback_cmd=["claude"]
+        )
+    else:
+        exec_action = ExecProcess(cmd=["claude"], cwd=wt_path)
 
     actions.extend(
         [
             LaunchProcess(cmd=["alacritty"], cwd=wt_path),
             LaunchProcess(cmd=["emacs", "."], cwd=wt_path),
-            ExecProcess(cmd=claude_cmd, cwd=wt_path),
+            exec_action,
         ]
     )
 

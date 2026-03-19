@@ -44,6 +44,7 @@ def test_open_launch_apps_new_worktree() -> None:
     exec_action = actions[-1]
     assert isinstance(exec_action, ExecProcess)
     assert exec_action.cmd == ["claude"]
+    assert exec_action.fallback_cmd is None
 
 
 def test_open_launch_apps_existing_worktree() -> None:
@@ -56,6 +57,7 @@ def test_open_launch_apps_existing_worktree() -> None:
     exec_action = actions[-1]
     assert isinstance(exec_action, ExecProcess)
     assert exec_action.cmd == ["claude", "--continue"]
+    assert exec_action.fallback_cmd == ["claude"]
 
 
 def test_open_sanitize_branch_ok() -> None:

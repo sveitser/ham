@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -72,15 +73,43 @@ def test_close_window() -> None:
     )
 
 
-def test_exec_process() -> None:
-    action = ExecProcess(cmd=["claude", "--continue"], cwd=WT)
+def test_exec_process_no_fallback() -> None:
+    action = ExecProcess(cmd=["claude"], cwd=WT)
     with (
         patch("ham.executor.os.chdir") as mock_chdir,
         patch("ham.executor.os.execvp") as mock_execvp,
     ):
         execute([action])
     mock_chdir.assert_called_once_with(WT)
-    mock_execvp.assert_called_once_with("claude", ["claude", "--continue"])
+    mock_execvp.assert_called_once_with("claude", ["claude"])
+
+
+def test_exec_process_fallback_on_failure() -> None:
+    action = ExecProcess(cmd=["claude", "--continue"], cwd=WT, fallback_cmd=["claude"])
+    with (
+        patch("ham.executor.os.chdir"),
+        patch(
+            "ham.executor.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 1),
+        ),
+        patch("ham.executor.os.execvp") as mock_execvp,
+    ):
+        execute([action])
+    mock_execvp.assert_called_once_with("claude", ["claude"])
+
+
+def test_exec_process_fallback_not_used_on_success() -> None:
+    action = ExecProcess(cmd=["claude", "--continue"], cwd=WT, fallback_cmd=["claude"])
+    with (
+        patch("ham.executor.os.chdir"),
+        patch(
+            "ham.executor.subprocess.run",
+            return_value=subprocess.CompletedProcess([], 0),
+        ),
+        patch("ham.executor.os.execvp") as mock_execvp,
+    ):
+        execute([action])
+    mock_execvp.assert_not_called()
 
 
 def test_prompt_confirmation_yes(monkeypatch: pytest.MonkeyPatch) -> None:

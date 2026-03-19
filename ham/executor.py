@@ -49,9 +49,14 @@ def _execute_one(action: Action) -> None:
                 check=True,
             )
 
-        case ExecProcess(cmd, cwd):
+        case ExecProcess(cmd, cwd, fallback_cmd):
             os.chdir(cwd)
-            os.execvp(cmd[0], cmd)
+            if fallback_cmd:
+                result = subprocess.run(cmd)
+                if result.returncode != 0:
+                    os.execvp(fallback_cmd[0], fallback_cmd)
+            else:
+                os.execvp(cmd[0], cmd)
 
         case PromptConfirmation(message):
             print(message)

@@ -36,6 +36,7 @@ class CloseWindow(Action):
 class ExecProcess(Action):
     cmd: list[str]
     cwd: Path
+    fallback_cmd: list[str] | None = None
 
 
 @dataclass
