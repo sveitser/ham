@@ -8,6 +8,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SetupDirenv,
     SwitchWorkspace,
 )
 from ham.git import worktree_path
@@ -44,6 +45,8 @@ def plan_open(
         )
     else:
         exec_action = ExecProcess(cmd=["claude"], cwd=wt_path)
+
+    actions.append(SetupDirenv(cwd=wt_path))
 
     actions.extend(
         [

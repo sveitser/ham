@@ -22,6 +22,11 @@ class GitWorktreeRemove(Action):
 
 
 @dataclass
+class SetupDirenv(Action):
+    cwd: Path
+
+
+@dataclass
 class LaunchProcess(Action):
     cmd: list[str]
     cwd: Path

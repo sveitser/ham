@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import subprocess
 
 from ham.actions import (
@@ -10,6 +11,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SetupDirenv,
     SwitchWorkspace,
 )
 
@@ -40,6 +42,25 @@ def _execute_one(action: Action) -> None:
                 ["git", "-C", str(repo), "worktree", "remove", str(worktree_path)],
                 check=True,
             )
+
+        case SetupDirenv(cwd):
+            envrc_example = cwd / ".envrc.example"
+            envrc_local = cwd / ".envrc.local"
+            if envrc_example.exists() and not envrc_local.exists():
+                log.info("copying .envrc.example to .envrc.local")
+                shutil.copy2(envrc_example, envrc_local)
+            envrc = cwd / ".envrc"
+            if not envrc.exists():
+                log.debug("no .envrc found, skipping direnv allow")
+                return
+            result = subprocess.run(
+                ["direnv", "allow"],
+                cwd=str(cwd),
+            )
+            if result.returncode != 0:
+                log.warning(
+                    "direnv allow failed (rc=%d), continuing", result.returncode
+                )
 
         case LaunchProcess(cmd, cwd):
             subprocess.Popen(

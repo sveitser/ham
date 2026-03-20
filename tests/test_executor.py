@@ -1,5 +1,6 @@
 import subprocess
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import patch
 
 import pytest
@@ -12,6 +13,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SetupDirenv,
     SwitchWorkspace,
 )
 from ham.executor import execute
@@ -52,6 +54,45 @@ def test_git_worktree_remove() -> None:
         ["git", "-C", str(REPO), "worktree", "remove", str(WT)],
         check=True,
     )
+
+
+def test_setup_direnv_copies_envrc_example(tmp_path: Path) -> None:
+    (tmp_path / ".envrc").write_text("source_env .envrc.local")
+    (tmp_path / ".envrc.example").write_text("use flake")
+    action = SetupDirenv(cwd=tmp_path)
+    with patch(
+        "ham.executor.subprocess.run", return_value=CompletedProcess([], 0)
+    ) as mock_run:
+        execute([action])
+    assert (tmp_path / ".envrc.local").read_text() == "use flake"
+    mock_run.assert_called_once_with(["direnv", "allow"], cwd=str(tmp_path))
+
+
+def test_setup_direnv_skips_copy_when_local_exists(tmp_path: Path) -> None:
+    (tmp_path / ".envrc").write_text("source_env .envrc.local")
+    (tmp_path / ".envrc.example").write_text("use flake")
+    (tmp_path / ".envrc.local").write_text("custom")
+    action = SetupDirenv(cwd=tmp_path)
+    with patch(
+        "ham.executor.subprocess.run", return_value=CompletedProcess([], 0)
+    ) as mock_run:
+        execute([action])
+    assert (tmp_path / ".envrc.local").read_text() == "custom"
+    mock_run.assert_called_once_with(["direnv", "allow"], cwd=str(tmp_path))
+
+
+def test_setup_direnv_no_envrc(tmp_path: Path) -> None:
+    action = SetupDirenv(cwd=tmp_path)
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    mock_run.assert_not_called()
+
+
+def test_setup_direnv_failure_continues(tmp_path: Path) -> None:
+    (tmp_path / ".envrc").write_text("use flake")
+    action = SetupDirenv(cwd=tmp_path)
+    with patch("ham.executor.subprocess.run", return_value=CompletedProcess([], 1)):
+        execute([action])  # should not raise
 
 
 def test_launch_process() -> None:

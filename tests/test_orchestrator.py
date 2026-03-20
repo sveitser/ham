@@ -10,6 +10,7 @@ from ham.actions import (
     GitWorktreeRemove,
     LaunchProcess,
     PromptConfirmation,
+    SetupDirenv,
     SwitchWorkspace,
 )
 from ham.git import worktree_path
@@ -25,6 +26,7 @@ def test_open_create_worktree_ok() -> None:
     )
     assert isinstance(actions[0], GitWorktreeAdd)
     assert actions[0].create_branch is True
+    assert isinstance(actions[1], SetupDirenv)
     assert len([a for a in actions if isinstance(a, LaunchProcess)]) == 2
 
 
@@ -33,7 +35,7 @@ def test_open_reuse_worktree_ok() -> None:
         REPO, "my-feature", is_git_repo=True, worktree_exists=True, branch_exists=True
     )
     assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
-    assert len(actions) == 3
+    assert isinstance(actions[0], SetupDirenv)
 
 
 def test_open_launch_apps_new_worktree() -> None:
