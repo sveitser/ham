@@ -53,21 +53,31 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="ham", description="Hyprland Agent Manager")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    open_parser = subparsers.add_parser("open")
-    open_parser.add_argument("target")
-    open_parser.add_argument("branch_name", nargs="?")
+    open_parser = subparsers.add_parser(
+        "open", help="open worktree (create if needed) and launch apps"
+    )
+    open_parser.add_argument(
+        "target", help="repo_name/branch (existing) or repo_path (with branch_name)"
+    )
+    open_parser.add_argument("branch_name", nargs="?", help="branch to create")
 
-    for name in ("close", "delete"):
-        sub = subparsers.add_parser(name)
-        sub.add_argument("repo_path", type=Path, nargs="?")
-        sub.add_argument("branch_name", nargs="?")
+    for name, help_text in (
+        ("close", "close workspace windows for a worktree"),
+        ("delete", "delete worktree, branch, and close windows"),
+    ):
+        sub = subparsers.add_parser(name, help=help_text)
+        sub.add_argument("repo_path", type=Path, nargs="?", help="path to git repo")
+        sub.add_argument("branch_name", nargs="?", help="branch name")
 
-    subparsers.add_parser("list")
+    subparsers.add_parser("list", help="list active worktrees as repo_name/branch")
 
-    switch_parser = subparsers.add_parser("switch")
-    switch_parser.add_argument("query", nargs="?")
+    switch_parser = subparsers.add_parser(
+        "switch",
+        help="focus existing workspace, or open worktree if no windows (fzf picker if no query)",
+    )
+    switch_parser.add_argument("query", nargs="?", help="repo_name/branch to switch to")
 
-    subparsers.add_parser("rofi")
+    subparsers.add_parser("rofi", help="switch to worktree via rofi picker")
 
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
