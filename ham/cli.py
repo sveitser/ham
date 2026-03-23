@@ -54,8 +54,8 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     open_parser = subparsers.add_parser("open")
-    open_parser.add_argument("repo_path", type=Path)
-    open_parser.add_argument("branch_name")
+    open_parser.add_argument("target")
+    open_parser.add_argument("branch_name", nargs="?")
 
     for name in ("close", "delete"):
         sub = subparsers.add_parser(name)
@@ -127,8 +127,15 @@ def main() -> None:
             log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
         wt_path = worktree_path(repo, branch)
     else:
-        repo = args.repo_path.resolve()
-        branch = args.branch_name
+        if args.branch_name is None:
+            resolved = git.resolve_worktree(args.target)
+            if resolved is None:
+                print(f"worktree not found: {args.target}", file=sys.stderr)
+                raise SystemExit(1)
+            repo, branch = resolved
+        else:
+            repo = Path(args.target).resolve()
+            branch = args.branch_name
         wt_path = worktree_path(repo, branch)
 
     log.debug("worktree_path=%s", wt_path)

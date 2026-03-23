@@ -26,6 +26,46 @@ def test_open_parses_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_exec.assert_called_once_with([])
 
 
+def test_open_selection_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open", "myrepo/feat"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_open", return_value=[]) as mock_plan,
+        patch("ham.cli.execute") as mock_exec,
+    ):
+        mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = False
+        mock_git.branch_exists.return_value = False
+        main()
+    mock_git.resolve_worktree.assert_called_once_with("myrepo/feat")
+    mock_plan.assert_called_once()
+    mock_exec.assert_called_once_with([])
+
+
+def test_open_selection_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open", "nope/nope"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.resolve_worktree.return_value = None
+        with pytest.raises(SystemExit):
+            main()
+
+
+def test_open_no_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open"])
+    with pytest.raises(SystemExit):
+        main()
+
+
+def test_open_selection_no_slash(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open", "something"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.resolve_worktree.return_value = None
+        with pytest.raises(SystemExit):
+            main()
+
+
 def test_close_parses_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "close", "/some/path", "my-branch"])
     with (
