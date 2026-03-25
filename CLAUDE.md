@@ -4,8 +4,12 @@ Workspace management tool for hyprland + Claude Code.
 
 ## Commands
 - `nix develop` - enter dev shell
-- `pytest` - run tests
 - `python -m ham.cli` - run without installing
+- `just test` - run tests
+- `just cov` - tests with coverage
+- `just fmt` - format with ruff
+- `just lint` - lint with ruff
+- `just check` - fmt + lint + cov
 
 ## CLI Usage
 - `ham open` - interactive fzf: pick repo from REPO_DIR, then pick/type branch
@@ -14,8 +18,8 @@ Workspace management tool for hyprland + Claude Code.
 - `ham list` - list active worktrees as repo_name/branch
 - `ham switch [query]` - focus existing worktree workspace (fzf if no query)
 - `ham rofi` - switch via rofi picker
-- `ham close [repo_path branch]` - close workspace windows (resolves from cwd if no args)
-- `ham delete [repo_path branch]` - delete worktree and close windows
+- `ham close [repo_name/branch | repo_path branch]` - close workspace windows (resolves from cwd if no args)
+- `ham delete [repo_name/branch | repo_path branch]` - delete worktree and close windows
 
 ## Environment
 - `HAM_REPO_DIR` - repo discovery root (default: `~/r`), scanned 2 levels deep (org/repo)
