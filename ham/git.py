@@ -5,6 +5,7 @@ from pathlib import Path
 DATA_DIR = (
     Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "ham"
 )
+REPO_DIR = Path(os.environ.get("HAM_REPO_DIR", Path.home() / "r"))
 
 
 def sanitize_branch(branch: str) -> str:
@@ -121,6 +122,46 @@ def list_worktrees() -> list[tuple[str, str]]:  # pragma: no cover
                 continue
             results.append((repo_path.name, branch_dir.name))
     return results
+
+
+def discover_repos(repo_dir: Path | None = None) -> list[Path]:
+    """Scan repo_dir 2 levels deep (org/repo) for dirs with .git."""
+    base = repo_dir or REPO_DIR
+    if not base.exists():
+        return []
+    repos = []
+    for org in sorted(base.iterdir()):
+        if not org.is_dir():
+            continue
+        for repo in sorted(org.iterdir()):
+            if not repo.is_dir():
+                continue
+            if (repo / ".git").exists():
+                repos.append(repo)
+    return repos
+
+
+def resolve_repo(name: str, repo_dir: Path | None = None) -> Path:
+    """Find unique repo by basename. Raises ValueError on 0 or >1 matches."""
+    matches = [r for r in discover_repos(repo_dir) if r.name == name]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) == 0:
+        raise ValueError(f"no repo found with name '{name}'")
+    raise ValueError(
+        f"multiple repos found with name '{name}': {[str(p) for p in matches]}"
+    )
+
+
+def list_branches(repo: Path) -> list[str]:  # pragma: no cover
+    """List local branch names for a repo."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), "branch", "--format=%(refname:short)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
 def is_git_repo(path: Path) -> bool:  # pragma: no cover

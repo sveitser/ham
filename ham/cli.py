@@ -8,7 +8,8 @@ from ham import git, hyprland
 from ham.executor import execute
 from ham.git import DATA_DIR, worktree_path
 from ham.hyprland import find_free_workspace, get_workspace_for_windows, windows_in_path
-from ham.orchestrator import plan_close, plan_delete, plan_open, plan_switch
+from ham.actions import Action
+from ham.orchestrator import plan_close, plan_delete, plan_switch
 
 log = logging.getLogger(__name__)
 
@@ -49,17 +50,70 @@ def _get_selection(args: argparse.Namespace) -> str:
     return result.stdout.strip()
 
 
+def _pick_repo() -> Path:
+    """fzf picker over discovered repos."""
+    repos = git.discover_repos()
+    if not repos:
+        print(f"no repos found in {git.REPO_DIR}", file=sys.stderr)
+        raise SystemExit(1)
+    result = subprocess.run(
+        ["fzf", "--prompt", "repo> "],
+        input="\n".join(str(r) for r in repos),
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise SystemExit(1)
+    return Path(result.stdout.strip())
+
+
+def _pick_branch(repo: Path) -> str:
+    """fzf picker over branches, with --print-query for new branch names."""
+    branches = git.list_branches(repo)
+    result = subprocess.run(
+        ["fzf", "--print-query", "--prompt", "branch> "],
+        input="\n".join(branches) if branches else "",
+        capture_output=True,
+        text=True,
+    )
+    # --print-query: line 0 = typed query, line 1 = selected match
+    # rc=0: match selected, rc=1: no match (use query as new branch name)
+    lines = result.stdout.strip().splitlines()
+    if result.returncode == 0 and len(lines) >= 2:
+        return lines[1]
+    if result.returncode == 1 and len(lines) >= 1 and lines[0]:
+        return lines[0]
+    raise SystemExit(1)
+
+
+def _switch_actions(repo: Path, branch: str) -> list[Action]:
+    """Build plan_switch actions for a repo/branch."""
+    wt_path = worktree_path(repo, branch)
+    windows = hyprland.get_windows()
+    matched = windows_in_path(windows, wt_path, own_last=False)
+    workspace_id = get_workspace_for_windows(matched)
+    return plan_switch(
+        repo,
+        branch,
+        workspace_id=workspace_id,
+        free_workspace=find_free_workspace() if workspace_id is None else 0,
+        is_git_repo=git.is_git_repo(repo),
+        worktree_exists=git.worktree_exists(repo, wt_path),
+        branch_exists=git.branch_exists(repo, branch),
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ham", description="Hyprland Agent Manager")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     open_parser = subparsers.add_parser(
-        "open", help="open worktree (create if needed) and launch apps"
+        "open", help="open or switch to worktree (interactive fzf if no args)"
     )
     open_parser.add_argument(
-        "target", help="repo_name/branch (existing) or repo_path (with branch_name)"
+        "target", nargs="?", help="repo_name/branch or repo_path (with branch_name)"
     )
-    open_parser.add_argument("branch_name", nargs="?", help="branch to create")
+    open_parser.add_argument("branch_name", nargs="?", help="branch name")
 
     for name, help_text in (
         ("close", "close workspace windows for a worktree"),
@@ -107,20 +161,7 @@ def main() -> None:
             print(f"worktree not found: {selection}", file=sys.stderr)
             raise SystemExit(1)
         repo, branch = resolved
-        wt_path = worktree_path(repo, branch)
-        windows = hyprland.get_windows()
-        matched = windows_in_path(windows, wt_path, own_last=False)
-        workspace_id = get_workspace_for_windows(matched)
-        actions = plan_switch(
-            repo,
-            branch,
-            workspace_id=workspace_id,
-            free_workspace=find_free_workspace() if workspace_id is None else 0,
-            is_git_repo=git.is_git_repo(repo),
-            worktree_exists=git.worktree_exists(repo, wt_path),
-            branch_exists=git.branch_exists(repo, branch),
-        )
-        execute(actions)
+        execute(_switch_actions(repo, branch))
         return
 
     if args.command in ("close", "delete"):
@@ -137,28 +178,41 @@ def main() -> None:
             log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
         wt_path = worktree_path(repo, branch)
     else:
-        if args.branch_name is None:
-            resolved = git.resolve_worktree(args.target)
-            if resolved is None:
-                print(f"worktree not found: {args.target}", file=sys.stderr)
-                raise SystemExit(1)
-            repo, branch = resolved
-        else:
+        # Resolve target to (repo, branch)
+        if args.target is None:
+            # Interactive: fzf repo then branch
+            repo = _pick_repo()
+            branch = _pick_branch(repo)
+        elif args.branch_name is not None:
+            # Explicit: ham open /path branch
             repo = Path(args.target).resolve()
             branch = args.branch_name
+        else:
+            # Smart resolution: ham open foo/bar/baz
+            resolved = git.resolve_worktree(args.target)
+            if resolved is not None:
+                repo, branch = resolved
+            else:
+                parts = args.target.split("/", 1)
+                if len(parts) != 2:
+                    print(
+                        f"invalid target (need repo/branch): {args.target}",
+                        file=sys.stderr,
+                    )
+                    raise SystemExit(1)
+                repo_name, branch = parts
+                try:
+                    repo = git.resolve_repo(repo_name)
+                except ValueError as e:
+                    print(str(e), file=sys.stderr)
+                    raise SystemExit(1)
         wt_path = worktree_path(repo, branch)
 
     log.debug("worktree_path=%s", wt_path)
 
     match args.command:
         case "open":
-            actions = plan_open(
-                repo,
-                branch,
-                is_git_repo=git.is_git_repo(repo),
-                worktree_exists=git.worktree_exists(repo, wt_path),
-                branch_exists=git.branch_exists(repo, branch),
-            )
+            actions = _switch_actions(repo, branch)
         case "close":
             windows = hyprland.get_windows()
             actions = plan_close(repo, branch, windows)
