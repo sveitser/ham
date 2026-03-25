@@ -462,6 +462,56 @@ def test_switch_worktree_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
             main()
 
 
+def test_close_target_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "close", "myrepo/feat"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_close", return_value=[]) as mock_plan,
+        patch("ham.cli.execute") as mock_exec,
+    ):
+        mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_plan.assert_called_once()
+    mock_exec.assert_called_once_with([])
+
+
+def test_close_target_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "close", "nope/nope"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.resolve_worktree.return_value = None
+        with pytest.raises(SystemExit):
+            main()
+
+
+def test_delete_target_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "delete", "myrepo/feat"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_delete", return_value=[]) as mock_plan,
+        patch("ham.cli.execute") as mock_exec,
+    ):
+        mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
+        mock_git.worktree_exists.return_value = True
+        mock_git.is_dirty.return_value = (False, "")
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_plan.assert_called_once()
+    mock_exec.assert_called_once_with([])
+
+
+def test_delete_target_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "delete", "nope/nope"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.resolve_worktree.return_value = None
+        with pytest.raises(SystemExit):
+            main()
+
+
 def test_fzf_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
     """fzf returns non-zero, should raise SystemExit."""
     monkeypatch.setattr("sys.argv", ["ham", "switch"])

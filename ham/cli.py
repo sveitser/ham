@@ -120,7 +120,9 @@ def main() -> None:
         ("delete", "delete worktree, branch, and close windows"),
     ):
         sub = subparsers.add_parser(name, help=help_text)
-        sub.add_argument("repo_path", type=Path, nargs="?", help="path to git repo")
+        sub.add_argument(
+            "target", nargs="?", help="repo_name/branch or repo_path (with branch_name)"
+        )
         sub.add_argument("branch_name", nargs="?", help="branch name")
 
     subparsers.add_parser("list", help="list active worktrees as repo_name/branch")
@@ -165,10 +167,17 @@ def main() -> None:
         return
 
     if args.command in ("close", "delete"):
-        if args.repo_path and args.branch_name:
-            repo = args.repo_path.resolve()
+        if args.target and args.branch_name:
+            repo = Path(args.target).resolve()
             branch = args.branch_name
             log.debug("explicit args: repo=%s branch=%s", repo, branch)
+        elif args.target:
+            resolved = git.resolve_worktree(args.target)
+            if resolved is None:
+                print(f"worktree not found: {args.target}", file=sys.stderr)
+                raise SystemExit(1)
+            repo, branch = resolved
+            log.debug("resolved from target: repo=%s branch=%s", repo, branch)
         else:
             resolved = git.resolve_from_cwd()
             if resolved is None:
@@ -227,6 +236,8 @@ def main() -> None:
                 status=status,
                 windows=windows,
             )
+        case _:
+            raise AssertionError(f"unhandled command: {args.command}")
 
     execute(actions)
 
