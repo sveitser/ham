@@ -39,17 +39,12 @@ def plan_open(
             )
         )
 
+    direnv = ["direnv", "exec", str(wt_path)]
+
     if worktree_exists:
-        claude_cmd = [
-            "alacritty",
-            "--working-directory",
-            str(wt_path),
-            "-e",
-            "claude",
-            "--continue",
-        ]
+        claude_cmd = direnv + ["claude", "--continue"]
     else:
-        claude_cmd = ["alacritty", "--working-directory", str(wt_path), "-e", "claude"]
+        claude_cmd = direnv + ["claude"]
 
     actions.append(SetupDirenv(cwd=wt_path))
 
@@ -60,10 +55,14 @@ def plan_open(
                 workspace_id=workspace_id,
             ),
             LaunchProcess(
-                cmd=["emacs", "--chdir", str(wt_path), "."],
+                cmd=direnv + ["emacs", str(wt_path / "README.md")],
                 workspace_id=workspace_id,
             ),
-            LaunchProcess(cmd=claude_cmd, workspace_id=workspace_id),
+            LaunchProcess(
+                cmd=["alacritty", "--working-directory", str(wt_path), "-e"]
+                + claude_cmd,
+                workspace_id=workspace_id,
+            ),
         ]
     )
 

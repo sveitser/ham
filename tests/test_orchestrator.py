@@ -60,12 +60,21 @@ def test_open_launch_apps_new_worktree() -> None:
     )
     launches = [a for a in actions if isinstance(a, LaunchProcess)]
     assert launches[0].cmd == ["alacritty", "--working-directory", str(wt_path)]
-    assert launches[1].cmd == ["emacs", "--chdir", str(wt_path), "."]
+    assert launches[1].cmd == [
+        "direnv",
+        "exec",
+        str(wt_path),
+        "emacs",
+        str(wt_path / "README.md"),
+    ]
     assert launches[2].cmd == [
         "alacritty",
         "--working-directory",
         str(wt_path),
         "-e",
+        "direnv",
+        "exec",
+        str(wt_path),
         "claude",
     ]
 
@@ -82,12 +91,21 @@ def test_open_launch_apps_existing_worktree() -> None:
     )
     launches = [a for a in actions if isinstance(a, LaunchProcess)]
     assert launches[0].cmd == ["alacritty", "--working-directory", str(wt_path)]
-    assert launches[1].cmd == ["emacs", "--chdir", str(wt_path), "."]
+    assert launches[1].cmd == [
+        "direnv",
+        "exec",
+        str(wt_path),
+        "emacs",
+        str(wt_path / "README.md"),
+    ]
     assert launches[2].cmd == [
         "alacritty",
         "--working-directory",
         str(wt_path),
         "-e",
+        "direnv",
+        "exec",
+        str(wt_path),
         "claude",
         "--continue",
     ]
@@ -271,6 +289,9 @@ def test_open_claude_is_last() -> None:
         "--working-directory",
         str(wt_path),
         "-e",
+        "direnv",
+        "exec",
+        str(wt_path),
         "claude",
     ]
 
@@ -411,10 +432,11 @@ def test_launch_cwd_ok() -> None:
     # alacritty terminal
     assert "--working-directory" in launches[0].cmd
     assert str(wt_path) in launches[0].cmd
-    # emacs gets absolute path
-    assert launches[1].cmd == ["emacs", "--chdir", str(wt_path), "."]
-    # claude alacritty
-    assert "--working-directory" in launches[2].cmd
+    # emacs via direnv
+    assert launches[1].cmd[:3] == ["direnv", "exec", str(wt_path)]
+    assert "emacs" in launches[1].cmd
+    # claude alacritty via direnv
+    assert "direnv" in launches[2].cmd
     assert str(wt_path) in launches[2].cmd
 
 
