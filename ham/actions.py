@@ -29,19 +29,12 @@ class SetupDirenv(Action):
 @dataclass
 class LaunchProcess(Action):
     cmd: list[str]
-    cwd: Path
+    workspace_id: int
 
 
 @dataclass
 class CloseWindow(Action):
     address: str
-
-
-@dataclass
-class ExecProcess(Action):
-    cmd: list[str]
-    cwd: Path
-    fallback_cmd: list[str] | None = None
 
 
 @dataclass

@@ -1,4 +1,3 @@
-import subprocess
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import patch
@@ -8,7 +7,6 @@ import pytest
 from ham.actions import (
     Action,
     CloseWindow,
-    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -96,13 +94,32 @@ def test_setup_direnv_failure_continues(tmp_path: Path) -> None:
 
 
 def test_launch_process() -> None:
-    action = LaunchProcess(cmd=["alacritty", "-e", "claude"], cwd=WT)
-    with patch("ham.executor.subprocess.Popen") as mock_popen:
+    action = LaunchProcess(cmd=["alacritty", "-e", "claude"], workspace_id=3)
+    with patch("ham.executor.subprocess.run") as mock_run:
         execute([action])
-    mock_popen.assert_called_once()
-    _, kwargs = mock_popen.call_args
-    assert kwargs["cwd"] == str(WT)
-    assert kwargs["start_new_session"] is True
+    mock_run.assert_called_once_with(
+        ["hyprctl", "dispatch", "exec", "[workspace 3 silent]", "alacritty -e claude"],
+        check=True,
+    )
+
+
+def test_launch_process_path_with_spaces() -> None:
+    action = LaunchProcess(
+        cmd=["alacritty", "--working-directory", "/home/user/my projects/repo"],
+        workspace_id=3,
+    )
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    mock_run.assert_called_once_with(
+        [
+            "hyprctl",
+            "dispatch",
+            "exec",
+            "[workspace 3 silent]",
+            "alacritty --working-directory '/home/user/my projects/repo'",
+        ],
+        check=True,
+    )
 
 
 def test_close_window() -> None:
@@ -113,45 +130,6 @@ def test_close_window() -> None:
         ["hyprctl", "dispatch", "closewindow", "address:0xdead"],
         check=True,
     )
-
-
-def test_exec_process_no_fallback() -> None:
-    action = ExecProcess(cmd=["claude"], cwd=WT)
-    with (
-        patch("ham.executor.os.chdir") as mock_chdir,
-        patch("ham.executor.os.execvp") as mock_execvp,
-    ):
-        execute([action])
-    mock_chdir.assert_called_once_with(WT)
-    mock_execvp.assert_called_once_with("claude", ["claude"])
-
-
-def test_exec_process_fallback_on_failure() -> None:
-    action = ExecProcess(cmd=["claude", "--continue"], cwd=WT, fallback_cmd=["claude"])
-    with (
-        patch("ham.executor.os.chdir"),
-        patch(
-            "ham.executor.subprocess.run",
-            return_value=subprocess.CompletedProcess([], 1),
-        ),
-        patch("ham.executor.os.execvp") as mock_execvp,
-    ):
-        execute([action])
-    mock_execvp.assert_called_once_with("claude", ["claude"])
-
-
-def test_exec_process_fallback_not_used_on_success() -> None:
-    action = ExecProcess(cmd=["claude", "--continue"], cwd=WT, fallback_cmd=["claude"])
-    with (
-        patch("ham.executor.os.chdir"),
-        patch(
-            "ham.executor.subprocess.run",
-            return_value=subprocess.CompletedProcess([], 0),
-        ),
-        patch("ham.executor.os.execvp") as mock_execvp,
-    ):
-        execute([action])
-    mock_execvp.assert_not_called()
 
 
 def test_prompt_confirmation_yes(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,12 +1,11 @@
 import logging
-import os
+import shlex
 import shutil
 import subprocess
 
 from ham.actions import (
     Action,
     CloseWindow,
-    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -62,13 +61,17 @@ def _execute_one(action: Action) -> None:
                     "direnv allow failed (rc=%d), continuing", result.returncode
                 )
 
-        case LaunchProcess(cmd, cwd):
-            subprocess.Popen(
-                cmd,
-                cwd=str(cwd),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
+        case LaunchProcess(cmd, workspace_id):
+            shell_cmd = " ".join(shlex.quote(c) for c in cmd)
+            subprocess.run(
+                [
+                    "hyprctl",
+                    "dispatch",
+                    "exec",
+                    f"[workspace {workspace_id} silent]",
+                    shell_cmd,
+                ],
+                check=True,
             )
 
         case CloseWindow(address):
@@ -76,15 +79,6 @@ def _execute_one(action: Action) -> None:
                 ["hyprctl", "dispatch", "closewindow", f"address:{address}"],
                 check=True,
             )
-
-        case ExecProcess(cmd, cwd, fallback_cmd):
-            os.chdir(cwd)
-            if fallback_cmd:
-                result = subprocess.run(cmd)
-                if result.returncode != 0:
-                    os.execvp(fallback_cmd[0], fallback_cmd)
-            else:
-                os.execvp(cmd[0], cmd)
 
         case SwitchWorkspace(workspace_id):
             subprocess.run(

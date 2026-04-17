@@ -3,7 +3,6 @@ from pathlib import Path
 from ham.actions import (
     Action,
     CloseWindow,
-    ExecProcess,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -22,6 +21,7 @@ def plan_open(
     is_git_repo: bool,
     worktree_exists: bool,
     branch_exists: bool,
+    workspace_id: int,
 ) -> list[Action]:
     if not is_git_repo:
         raise ValueError(f"not a git repository: {repo}")
@@ -40,19 +40,30 @@ def plan_open(
         )
 
     if worktree_exists:
-        exec_action = ExecProcess(
-            cmd=["claude", "--continue"], cwd=wt_path, fallback_cmd=["claude"]
-        )
+        claude_cmd = [
+            "alacritty",
+            "--working-directory",
+            str(wt_path),
+            "-e",
+            "claude",
+            "--continue",
+        ]
     else:
-        exec_action = ExecProcess(cmd=["claude"], cwd=wt_path)
+        claude_cmd = ["alacritty", "--working-directory", str(wt_path), "-e", "claude"]
 
     actions.append(SetupDirenv(cwd=wt_path))
 
     actions.extend(
         [
-            LaunchProcess(cmd=["alacritty"], cwd=wt_path),
-            LaunchProcess(cmd=["emacs", "."], cwd=wt_path),
-            exec_action,
+            LaunchProcess(
+                cmd=["alacritty", "--working-directory", str(wt_path)],
+                workspace_id=workspace_id,
+            ),
+            LaunchProcess(
+                cmd=["emacs", "--chdir", str(wt_path), "."],
+                workspace_id=workspace_id,
+            ),
+            LaunchProcess(cmd=claude_cmd, workspace_id=workspace_id),
         ]
     )
 
@@ -100,10 +111,11 @@ def plan_switch(
 ) -> list[Action]:
     if workspace_id is not None:
         return [SwitchWorkspace(workspace_id=workspace_id)]
-    return [SwitchWorkspace(workspace_id=free_workspace)] + plan_open(
+    return plan_open(
         repo,
         branch,
         is_git_repo=is_git_repo,
         worktree_exists=worktree_exists,
         branch_exists=branch_exists,
-    )
+        workspace_id=free_workspace,
+    ) + [SwitchWorkspace(workspace_id=free_workspace)]
