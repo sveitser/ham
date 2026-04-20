@@ -1,12 +1,33 @@
 # ham - Hyprland Agent Manager
 
-Workspace management for [Hyprland](https://hyprland.org/) + [Claude Code](https://claude.com/claude-code). Each repo/branch gets its own workspace with an editor and agent terminal.
+Workspace management for running multiple [Claude Code](https://claude.com/claude-code) agents in
+parallel on [Hyprland](https://hyprland.org/). One agent per branch, each in its own workspace.
+
+## What it does
+
+`ham open repo/branch` sets up a branch for an agent to work on:
+
+1. Creates a git worktree at `repo-branch/` (new branch if it doesn't exist)
+2. Opens a fresh Hyprland workspace and launches three windows pinned to it:
+   - **Alacritty** in the worktree (shell)
+   - **Emacs** opening `README.md` (editor)
+   - **Alacritty** running `claude` (agent; `--continue` if resuming)
+3. Wraps editor and agent with `direnv exec` so project env vars load automatically
+
+Lifecycle:
+
+- `ham open` - create worktree + workspace
+- `ham switch` / `ham rofi` - jump back to a running workspace
+- `ham list` - see active worktrees
+- `ham close` - close the workspace windows (worktree stays)
+- `ham delete` - close windows and remove the worktree (confirms if dirty)
 
 ## Requirements
 
 Opinionated and only works with:
 
 - [Hyprland](https://hyprland.org/) (window manager / workspaces)
+- [Alacritty](https://alacritty.org/) (terminal)
 - [Emacs](https://www.gnu.org/software/emacs/) (editor)
 - [Git](https://git-scm.com/) (worktrees)
 - [Claude Code](https://claude.com/claude-code) (agent)
