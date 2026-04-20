@@ -35,8 +35,8 @@ Opinionated and only works with:
 ## Install
 
 ```sh
-nix profile install github:sveitser/agent-manager   # install from flake
-nix run github:sveitser/agent-manager -- open       # run without installing
+nix profile install github:sveitser/ham   # install from flake
+nix run github:sveitser/ham -- open       # run without installing
 ```
 
 ## Usage
