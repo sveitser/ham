@@ -7,7 +7,12 @@ from pathlib import Path
 from ham import git, hyprland
 from ham.executor import execute
 from ham.git import DATA_DIR, worktree_path
-from ham.hyprland import find_free_workspace, get_workspace_for_windows, windows_in_path
+from ham.hyprland import (
+    find_free_workspace,
+    get_active_workspace,
+    get_workspace_for_windows,
+    windows_in_path,
+)
 from ham.actions import Action
 from ham.orchestrator import plan_close, plan_delete, plan_switch
 
@@ -86,6 +91,14 @@ def _pick_branch(repo: Path) -> str:
     raise SystemExit(1)
 
 
+def _target_workspace() -> int:
+    """Reuse current workspace if it has <= 1 window, else pick a free one."""
+    active_id, window_count = get_active_workspace()
+    if window_count <= 1:
+        return active_id
+    return find_free_workspace()
+
+
 def _switch_actions(repo: Path, branch: str) -> list[Action]:
     """Build plan_switch actions for a repo/branch."""
     wt_path = worktree_path(repo, branch)
@@ -96,7 +109,7 @@ def _switch_actions(repo: Path, branch: str) -> list[Action]:
         repo,
         branch,
         workspace_id=workspace_id,
-        free_workspace=find_free_workspace() if workspace_id is None else 0,
+        free_workspace=_target_workspace() if workspace_id is None else 0,
         is_git_repo=git.is_git_repo(repo),
         worktree_exists=git.worktree_exists(repo, wt_path),
         branch_exists=git.branch_exists(repo, branch),

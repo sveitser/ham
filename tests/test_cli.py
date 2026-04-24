@@ -18,6 +18,7 @@ def test_open_parses_ok(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute") as mock_exec,
@@ -39,6 +40,7 @@ def test_open_selection_ok(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute") as mock_exec,
@@ -91,6 +93,7 @@ def test_open_smart_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
@@ -129,6 +132,7 @@ def test_open_interactive_ok(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
@@ -166,6 +170,7 @@ def test_open_interactive_new_branch(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
@@ -317,6 +322,7 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
@@ -362,6 +368,7 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
         patch("ham.cli.find_free_workspace", return_value=5),
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
@@ -425,7 +432,7 @@ def test_switch_existing_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_switch_new_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
-    """workspace_id is None, find_free_workspace should be called."""
+    """No matched windows and active workspace crowded: use free workspace."""
     monkeypatch.setattr("sys.argv", ["ham", "switch", "myrepo/feat"])
     with (
         patch("ham.cli.git") as mock_git,
@@ -433,6 +440,7 @@ def test_switch_new_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.worktree_path", return_value=FAKE_WT),
         patch("ham.cli.windows_in_path", return_value=[]),
         patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(2, 3)),
         patch("ham.cli.find_free_workspace", return_value=7) as mock_free,
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
@@ -448,6 +456,61 @@ def test_switch_new_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
     call_kwargs = mock_plan.call_args
     assert call_kwargs[1]["workspace_id"] is None
     assert call_kwargs[1]["free_workspace"] == 7
+
+
+def test_switch_reuses_active_when_single_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Active workspace with <=1 window is reused instead of a free one."""
+    monkeypatch.setattr("sys.argv", ["ham", "switch", "myrepo/feat"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(4, 1)),
+        patch("ham.cli.find_free_workspace") as mock_free,
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = True
+        mock_git.branch_exists.return_value = True
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_free.assert_not_called()
+    call_kwargs = mock_plan.call_args
+    assert call_kwargs[1]["workspace_id"] is None
+    assert call_kwargs[1]["free_workspace"] == 4
+
+
+def test_switch_reuses_active_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty active workspace is reused."""
+    monkeypatch.setattr("sys.argv", ["ham", "switch", "myrepo/feat"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(9, 0)),
+        patch("ham.cli.find_free_workspace") as mock_free,
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = True
+        mock_git.branch_exists.return_value = True
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_free.assert_not_called()
+    call_kwargs = mock_plan.call_args
+    assert call_kwargs[1]["free_workspace"] == 9
 
 
 def test_switch_worktree_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

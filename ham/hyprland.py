@@ -78,6 +78,18 @@ def find_free_workspace() -> int:  # pragma: no cover
     return workspace_id
 
 
+def get_active_workspace() -> tuple[int, int]:  # pragma: no cover
+    """Return (id, window_count) for the currently focused workspace."""
+    result = subprocess.run(
+        ["hyprctl", "activeworkspace", "-j"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    ws = json.loads(result.stdout)
+    return ws["id"], ws["windows"]
+
+
 def _ancestor_pids() -> dict[int, int]:  # pragma: no cover
     """Walk up from our PID to init. Returns {pid: distance} where 0 is self."""
     pids = {}

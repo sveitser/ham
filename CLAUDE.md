@@ -15,6 +15,7 @@ Workspace management tool for hyprland + Claude Code.
 - `ham open` - interactive fzf: pick repo from REPO_DIR, then pick/type branch
 - `ham open repo_name/branch` - resolve existing worktree or discover repo in REPO_DIR
 - `ham open /path/to/repo branch` - explicit repo path + branch
+- When spawning new windows, reuses the active workspace if it has ≤1 window, else picks the lowest free one
 - `ham list` - list active worktrees as repo_name/branch
 - `ham switch [query]` - focus existing worktree workspace (fzf if no query)
 - `ham rofi` - switch via rofi picker
