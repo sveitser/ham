@@ -40,6 +40,34 @@ def branch_exists(repo: Path, branch: str) -> bool:  # pragma: no cover
     return result.returncode == 0
 
 
+def remote_branch_exists(repo: Path, branch: str) -> bool:  # pragma: no cover
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "rev-parse",
+            "--verify",
+            f"refs/remotes/origin/{branch}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
+def fetch_origin(repo: Path) -> None:  # pragma: no cover
+    """Fetch from origin if it exists; no-op otherwise."""
+    has_origin = subprocess.run(
+        ["git", "-C", str(repo), "remote", "get-url", "origin"],
+        capture_output=True,
+        text=True,
+    )
+    if has_origin.returncode != 0:
+        return
+    subprocess.run(["git", "-C", str(repo), "fetch", "origin"], check=True)
+
+
 def is_dirty(worktree_path: Path) -> tuple[bool, str]:  # pragma: no cover
     result = subprocess.run(
         ["git", "-C", str(worktree_path), "status", "--porcelain"],

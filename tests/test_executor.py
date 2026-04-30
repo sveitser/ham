@@ -44,6 +44,32 @@ def test_git_worktree_add_existing_branch() -> None:
     )
 
 
+def test_git_worktree_add_tracks_remote() -> None:
+    action = GitWorktreeAdd(
+        repo=REPO,
+        worktree_path=WT,
+        branch="feat",
+        create_branch=True,
+        start_point="origin/feat",
+    )
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    mock_run.assert_called_once_with(
+        [
+            "git",
+            "-C",
+            str(REPO),
+            "worktree",
+            "add",
+            "-b",
+            "feat",
+            str(WT),
+            "origin/feat",
+        ],
+        check=True,
+    )
+
+
 def test_git_worktree_remove() -> None:
     action = GitWorktreeRemove(repo=REPO, worktree_path=WT)
     with patch("ham.executor.subprocess.run") as mock_run:

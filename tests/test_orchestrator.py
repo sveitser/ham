@@ -240,6 +240,39 @@ def test_open_branch_exists_ok() -> None:
     wt_add = actions[0]
     assert isinstance(wt_add, GitWorktreeAdd)
     assert wt_add.create_branch is False
+    assert wt_add.start_point is None
+
+
+def test_open_remote_branch_creates_tracking() -> None:
+    actions = plan_open(
+        REPO,
+        "from-remote",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        remote_branch_exists=True,
+        workspace_id=WS_ID,
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.create_branch is True
+    assert wt_add.start_point == "origin/from-remote"
+
+
+def test_open_local_branch_wins_over_remote() -> None:
+    actions = plan_open(
+        REPO,
+        "shared",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=True,
+        remote_branch_exists=True,
+        workspace_id=WS_ID,
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.create_branch is False
+    assert wt_add.start_point is None
 
 
 def test_close_no_windows_ok() -> None:

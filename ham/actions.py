@@ -13,6 +13,7 @@ class GitWorktreeAdd(Action):
     worktree_path: Path
     branch: str
     create_branch: bool
+    start_point: str | None = None
 
 
 @dataclass

@@ -21,6 +21,7 @@ def plan_open(
     is_git_repo: bool,
     worktree_exists: bool,
     branch_exists: bool,
+    remote_branch_exists: bool = False,
     workspace_id: int,
 ) -> list[Action]:
     if not is_git_repo:
@@ -30,12 +31,19 @@ def plan_open(
     actions: list[Action] = []
 
     if not worktree_exists:
+        if branch_exists:
+            create, start = False, None
+        elif remote_branch_exists:
+            create, start = True, f"origin/{branch}"
+        else:
+            create, start = True, None
         actions.append(
             GitWorktreeAdd(
                 repo=repo,
                 worktree_path=wt_path,
                 branch=branch,
-                create_branch=not branch_exists,
+                create_branch=create,
+                start_point=start,
             )
         )
 
@@ -107,6 +115,7 @@ def plan_switch(
     is_git_repo: bool,
     worktree_exists: bool,
     branch_exists: bool,
+    remote_branch_exists: bool = False,
 ) -> list[Action]:
     if workspace_id is not None:
         return [SwitchWorkspace(workspace_id=workspace_id)]
@@ -116,5 +125,6 @@ def plan_switch(
         is_git_repo=is_git_repo,
         worktree_exists=worktree_exists,
         branch_exists=branch_exists,
+        remote_branch_exists=remote_branch_exists,
         workspace_id=free_workspace,
     ) + [SwitchWorkspace(workspace_id=free_workspace)]

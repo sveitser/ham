@@ -27,12 +27,14 @@ def execute(actions: list[Action]) -> None:
 
 def _execute_one(action: Action) -> None:
     match action:
-        case GitWorktreeAdd(repo, worktree_path, branch, create_branch):
+        case GitWorktreeAdd(repo, worktree_path, branch, create_branch, start_point):
             cmd = ["git", "-C", str(repo), "worktree", "add"]
             if create_branch:
                 cmd.extend(["-b", branch])
             cmd.append(str(worktree_path))
-            if not create_branch:
+            if create_branch and start_point is not None:
+                cmd.append(start_point)
+            elif not create_branch:
                 cmd.append(branch)
             subprocess.run(cmd, check=True)
 

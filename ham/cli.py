@@ -105,14 +105,19 @@ def _switch_actions(repo: Path, branch: str) -> list[Action]:
     windows = hyprland.get_windows()
     matched = windows_in_path(windows, wt_path, own_last=False)
     workspace_id = get_workspace_for_windows(matched)
+    is_repo = git.is_git_repo(repo)
+    wt_exists = git.worktree_exists(repo, wt_path)
+    if is_repo and not wt_exists:
+        git.fetch_origin(repo)
     return plan_switch(
         repo,
         branch,
         workspace_id=workspace_id,
         free_workspace=_target_workspace() if workspace_id is None else 0,
-        is_git_repo=git.is_git_repo(repo),
-        worktree_exists=git.worktree_exists(repo, wt_path),
+        is_git_repo=is_repo,
+        worktree_exists=wt_exists,
         branch_exists=git.branch_exists(repo, branch),
+        remote_branch_exists=git.remote_branch_exists(repo, branch),
     )
 
 

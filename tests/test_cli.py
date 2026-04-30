@@ -85,6 +85,72 @@ def test_open_selection_no_slash(monkeypatch: pytest.MonkeyPatch) -> None:
             main()
 
 
+def test_open_fetches_when_worktree_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open", "/some/path", "my-branch"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
+        patch("ham.cli.find_free_workspace", return_value=5),
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = False
+        mock_git.branch_exists.return_value = False
+        mock_git.remote_branch_exists.return_value = True
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_git.fetch_origin.assert_called_once()
+    assert mock_plan.call_args[1]["remote_branch_exists"] is True
+
+
+def test_open_no_fetch_when_not_a_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open", "/some/path", "my-branch"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
+        patch("ham.cli.find_free_workspace", return_value=5),
+        patch("ham.cli.plan_switch", side_effect=ValueError("not a git repo")),
+        patch("ham.cli.execute"),
+    ):
+        mock_git.is_git_repo.return_value = False
+        mock_git.worktree_exists.return_value = False
+        mock_git.branch_exists.return_value = False
+        mock_hyprland.get_windows.return_value = []
+        with pytest.raises(ValueError):
+            main()
+    mock_git.fetch_origin.assert_not_called()
+
+
+def test_open_no_fetch_when_worktree_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "open", "/some/path", "my-branch"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 5)),
+        patch("ham.cli.find_free_workspace", return_value=5),
+        patch("ham.cli.plan_switch", return_value=[]),
+        patch("ham.cli.execute"),
+    ):
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = True
+        mock_git.branch_exists.return_value = True
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_git.fetch_origin.assert_not_called()
+
+
 def test_open_smart_resolve(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "open", "myrepo/new-feat"])
     with (
