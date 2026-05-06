@@ -108,7 +108,7 @@ def plan_delete(
     if dirty:
         actions.append(PromptConfirmation(message=status))
 
-    actions.append(GitWorktreeRemove(repo=repo, worktree_path=wt_path))
+    actions.append(GitWorktreeRemove(repo=repo, worktree_path=wt_path, force=dirty))
     return actions
 
 

@@ -80,6 +80,16 @@ def test_git_worktree_remove() -> None:
     )
 
 
+def test_git_worktree_remove_force() -> None:
+    action = GitWorktreeRemove(repo=REPO, worktree_path=WT, force=True)
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    mock_run.assert_called_once_with(
+        ["git", "-C", str(REPO), "worktree", "remove", "--force", str(WT)],
+        check=True,
+    )
+
+
 def test_setup_direnv_copies_envrc_example(tmp_path: Path) -> None:
     (tmp_path / ".envrc").write_text("source_env .envrc.local")
     (tmp_path / ".envrc.example").write_text("use flake")

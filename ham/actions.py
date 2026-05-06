@@ -20,6 +20,7 @@ class GitWorktreeAdd(Action):
 class GitWorktreeRemove(Action):
     repo: Path
     worktree_path: Path
+    force: bool = False
 
 
 @dataclass

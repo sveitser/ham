@@ -187,7 +187,9 @@ def test_delete_clean_remove_ok() -> None:
         REPO, "cleanup", worktree_exists=True, dirty=False, status="", windows=[]
     )
     assert len(actions) == 1
-    assert isinstance(actions[0], GitWorktreeRemove)
+    remove = actions[0]
+    assert isinstance(remove, GitWorktreeRemove)
+    assert remove.force is False
 
 
 def test_delete_dirty_prompt_ok() -> None:
@@ -201,7 +203,9 @@ def test_delete_dirty_prompt_ok() -> None:
     )
     assert len(actions) == 2
     assert isinstance(actions[0], PromptConfirmation)
-    assert isinstance(actions[1], GitWorktreeRemove)
+    remove = actions[1]
+    assert isinstance(remove, GitWorktreeRemove)
+    assert remove.force is True
 
 
 def test_delete_closes_windows() -> None:

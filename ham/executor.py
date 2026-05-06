@@ -38,11 +38,12 @@ def _execute_one(action: Action) -> None:
                 cmd.append(branch)
             subprocess.run(cmd, check=True)
 
-        case GitWorktreeRemove(repo, worktree_path):
-            subprocess.run(
-                ["git", "-C", str(repo), "worktree", "remove", str(worktree_path)],
-                check=True,
-            )
+        case GitWorktreeRemove(repo, worktree_path, force):
+            cmd = ["git", "-C", str(repo), "worktree", "remove"]
+            if force:
+                cmd.append("--force")
+            cmd.append(str(worktree_path))
+            subprocess.run(cmd, check=True)
 
         case SetupDirenv(cwd):
             envrc_example = cwd / ".envrc.example"
