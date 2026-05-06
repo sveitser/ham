@@ -4,7 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from ham.cli import main
+from ham.cli import format_prune_lines, main
+from ham.git import WorktreeStatus
 from ham.hyprland import HyprlandWindow
 
 FAKE_WT = Path("/fake/wt")
@@ -747,3 +748,82 @@ def test_fzf_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_git.list_worktrees.return_value = [("myrepo", "feat")]
         with pytest.raises(SystemExit):
             main()
+
+
+def _wt_status(repo_name: str, branch: str, modified: bool, untracked: bool):
+    return WorktreeStatus(
+        repo=Path(f"/r/{repo_name}"),
+        branch=branch,
+        wt_path=Path(f"/wt/{repo_name}/{branch}"),
+        has_modified=modified,
+        has_untracked=untracked,
+    )
+
+
+def test_format_prune_lines_clean() -> None:
+    lines = format_prune_lines([_wt_status("repo", "feat", False, False)])
+    assert lines == ["repo/feat\t"]
+
+
+def test_format_prune_lines_modified() -> None:
+    lines = format_prune_lines([_wt_status("repo", "feat", True, False)])
+    assert lines == ["repo/feat\tM"]
+
+
+def test_format_prune_lines_untracked() -> None:
+    lines = format_prune_lines([_wt_status("repo", "feat", False, True)])
+    assert lines == ["repo/feat\t?"]
+
+
+def test_format_prune_lines_both() -> None:
+    lines = format_prune_lines([_wt_status("repo", "feat", True, True)])
+    assert lines == ["repo/feat\tM?"]
+
+
+def test_prune_list_prints(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "prune", "--list"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.list_worktree_status.return_value = [
+            _wt_status("a", "main", False, False),
+            _wt_status("b", "feat", True, True),
+        ]
+        main()
+    out = capsys.readouterr().out
+    assert out == "a/main\t\nb/feat\tM?\n"
+
+
+def test_prune_runs_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "prune"])
+    fzf_result = CompletedProcess(args=["fzf"], returncode=0, stdout="", stderr="")
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.subprocess.run", return_value=fzf_result) as mock_run,
+    ):
+        mock_git.list_worktree_status.return_value = [
+            _wt_status("a", "main", False, False)
+        ]
+        main()
+    mock_run.assert_called_once()
+    cmd = mock_run.call_args.args[0]
+    assert cmd[0] == "fzf"
+    assert "--bind" in cmd
+    bind = cmd[cmd.index("--bind") + 1]
+    assert bind.startswith("ctrl-d:")
+    assert "execute(" in bind and "delete {1}" in bind
+    assert "reload(" in bind and "prune --list" in bind
+
+
+def test_prune_empty(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "prune"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.subprocess.run") as mock_run,
+    ):
+        mock_git.list_worktree_status.return_value = []
+        main()
+    mock_run.assert_not_called()
+    assert "no worktrees" in capsys.readouterr().err

@@ -1,12 +1,13 @@
 import argparse
 import logging
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 from ham import git, hyprland
 from ham.executor import execute
-from ham.git import DATA_DIR, worktree_path
+from ham.git import DATA_DIR, WorktreeStatus, worktree_path
 from ham.hyprland import (
     find_free_workspace,
     get_active_workspace,
@@ -103,6 +104,43 @@ def _target_workspace() -> int:
     return find_free_workspace()
 
 
+def _prune_flag(s: WorktreeStatus) -> str:
+    flag = ""
+    if s.has_modified:
+        flag += "M"
+    if s.has_untracked:
+        flag += "?"
+    return flag
+
+
+def format_prune_lines(statuses: list[WorktreeStatus]) -> list[str]:
+    return [f"{s.repo_name}/{s.branch}\t{_prune_flag(s)}" for s in statuses]
+
+
+def _run_prune() -> None:
+    statuses = git.list_worktree_status()
+    if not statuses:
+        print("no worktrees", file=sys.stderr)
+        return
+    ham_cmd = shlex.join([sys.executable, "-m", "ham.cli"])
+    bind = f"ctrl-d:execute({ham_cmd} delete {{1}})+reload({ham_cmd} prune --list)"
+    subprocess.run(
+        [
+            "fzf",
+            "--prompt",
+            "prune> ",
+            "--header",
+            "ctrl-d: delete   esc: quit",
+            "--delimiter",
+            "\t",
+            "--bind",
+            bind,
+        ],
+        input="\n".join(format_prune_lines(statuses)),
+        text=True,
+    )
+
+
 def _switch_actions(repo: Path, branch: str) -> list[Action]:
     """Build plan_switch actions for a repo/branch."""
     wt_path = worktree_path(repo, branch)
@@ -169,6 +207,11 @@ def main() -> None:
 
     subparsers.add_parser("rofi", help="switch to worktree via rofi picker")
 
+    prune_parser = subparsers.add_parser(
+        "prune", help="interactive worktree pruner (press d to delete)"
+    )
+    prune_parser.add_argument("--list", action="store_true", help=argparse.SUPPRESS)
+
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -188,6 +231,14 @@ def main() -> None:
     if args.command == "list":
         for repo_name, branch in git.list_worktrees():
             print(f"{repo_name}/{branch}")
+        return
+
+    if args.command == "prune":
+        if args.list:
+            for line in format_prune_lines(git.list_worktree_status()):
+                print(line)
+            return
+        _run_prune()
         return
 
     if args.command in ("switch", "rofi"):

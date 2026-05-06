@@ -21,6 +21,7 @@ Workspace management tool for hyprland + Claude Code.
 - `ham rofi` - switch via rofi picker (lists `wt: name/branch` entries and `repo: name` entries; selecting a `repo:` opens/switches to the bare repo path with no worktree)
 - `ham close [repo_name/branch | repo_path branch]` - close workspace windows (resolves from cwd if no args)
 - `ham delete [repo_name/branch | repo_path branch]` - delete worktree and close windows
+- `ham prune` - interactive fzf list of worktrees with `M`/`?` flags (modified/untracked); `ctrl-d` to delete
 
 ## Environment
 - `HAM_REPO_DIR` - repo discovery root (default: `~/r`), scanned 2 levels deep (org/repo)

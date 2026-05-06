@@ -1,6 +1,6 @@
 import pytest
 
-from ham.git import discover_repos, resolve_repo
+from ham.git import classify_porcelain, discover_repos, resolve_repo
 
 
 def test_discover_repos(tmp_path):
@@ -40,3 +40,19 @@ def test_resolve_repo_multiple(tmp_path):
     (tmp_path / "org2" / "samename" / ".git").mkdir(parents=True)
     with pytest.raises(ValueError, match="multiple repos found"):
         resolve_repo("samename", tmp_path)
+
+
+def test_classify_porcelain_empty():
+    assert classify_porcelain("") == (False, False)
+
+
+def test_classify_porcelain_modified_only():
+    assert classify_porcelain(" M src/foo.py") == (True, False)
+
+
+def test_classify_porcelain_untracked_only():
+    assert classify_porcelain("?? tmp/") == (False, True)
+
+
+def test_classify_porcelain_both():
+    assert classify_porcelain(" M src/foo.py\n?? tmp/\nA  new.py") == (True, True)

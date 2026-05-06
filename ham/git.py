@@ -1,5 +1,6 @@
 import os
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 DATA_DIR = (
@@ -132,6 +133,60 @@ def resolve_worktree(selection: str) -> tuple[Path, str] | None:  # pragma: no c
         if repo_path is not None and repo_path.name == repo_name:
             return (repo_path, branch)
     return None
+
+
+@dataclass
+class WorktreeStatus:
+    repo: Path
+    branch: str
+    wt_path: Path
+    has_modified: bool
+    has_untracked: bool
+
+    @property
+    def repo_name(self) -> str:
+        return self.repo.name
+
+
+def classify_porcelain(porcelain: str) -> tuple[bool, bool]:
+    """Parse `git status --porcelain` output into (has_modified_tracked, has_untracked)."""
+    has_modified = False
+    has_untracked = False
+    for line in porcelain.splitlines():
+        if not line:
+            continue
+        if line.startswith("??"):
+            has_untracked = True
+        else:
+            has_modified = True
+    return has_modified, has_untracked
+
+
+def list_worktree_status() -> list[WorktreeStatus]:  # pragma: no cover
+    if not DATA_DIR.exists():
+        return []
+    results = []
+    for repo_dir in sorted(DATA_DIR.iterdir()):
+        if not repo_dir.is_dir():
+            continue
+        for branch_dir in sorted(repo_dir.iterdir()):
+            if not branch_dir.is_dir():
+                continue
+            repo = _repo_path_from_worktree(branch_dir)
+            if repo is None:
+                continue
+            _, status_text = is_dirty(branch_dir)
+            has_mod, has_untracked = classify_porcelain(status_text)
+            results.append(
+                WorktreeStatus(
+                    repo=repo,
+                    branch=branch_dir.name,
+                    wt_path=branch_dir,
+                    has_modified=has_mod,
+                    has_untracked=has_untracked,
+                )
+            )
+    return results
 
 
 def list_worktrees() -> list[tuple[str, str]]:  # pragma: no cover
