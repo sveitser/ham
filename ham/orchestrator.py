@@ -14,6 +14,30 @@ from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow, windows_in_path
 
 
+def _launch_actions(
+    cwd: Path, *, claude_continue: bool, workspace_id: int
+) -> list[Action]:
+    direnv = ["direnv", "exec", str(cwd)]
+    claude_cmd = direnv + ["claude"]
+    if claude_continue:
+        claude_cmd.append("--continue")
+    return [
+        SetupDirenv(cwd=cwd),
+        LaunchProcess(
+            cmd=["alacritty", "--working-directory", str(cwd)],
+            workspace_id=workspace_id,
+        ),
+        LaunchProcess(
+            cmd=direnv + ["emacs", str(cwd / "README.md")],
+            workspace_id=workspace_id,
+        ),
+        LaunchProcess(
+            cmd=["alacritty", "--working-directory", str(cwd), "-e"] + claude_cmd,
+            workspace_id=workspace_id,
+        ),
+    ]
+
+
 def plan_open(
     repo: Path,
     branch: str,
@@ -47,34 +71,16 @@ def plan_open(
             )
         )
 
-    direnv = ["direnv", "exec", str(wt_path)]
-
-    if worktree_exists:
-        claude_cmd = direnv + ["claude", "--continue"]
-    else:
-        claude_cmd = direnv + ["claude"]
-
-    actions.append(SetupDirenv(cwd=wt_path))
-
     actions.extend(
-        [
-            LaunchProcess(
-                cmd=["alacritty", "--working-directory", str(wt_path)],
-                workspace_id=workspace_id,
-            ),
-            LaunchProcess(
-                cmd=direnv + ["emacs", str(wt_path / "README.md")],
-                workspace_id=workspace_id,
-            ),
-            LaunchProcess(
-                cmd=["alacritty", "--working-directory", str(wt_path), "-e"]
-                + claude_cmd,
-                workspace_id=workspace_id,
-            ),
-        ]
+        _launch_actions(
+            wt_path, claude_continue=worktree_exists, workspace_id=workspace_id
+        )
     )
-
     return actions
+
+
+def plan_open_repo(repo: Path, *, workspace_id: int) -> list[Action]:
+    return _launch_actions(repo, claude_continue=True, workspace_id=workspace_id)
 
 
 def plan_close(repo: Path, branch: str, windows: list[HyprlandWindow]) -> list[Action]:
@@ -128,3 +134,13 @@ def plan_switch(
         remote_branch_exists=remote_branch_exists,
         workspace_id=free_workspace,
     ) + [SwitchWorkspace(workspace_id=free_workspace)]
+
+
+def plan_switch_repo(
+    repo: Path, *, workspace_id: int | None, free_workspace: int
+) -> list[Action]:
+    if workspace_id is not None:
+        return [SwitchWorkspace(workspace_id=workspace_id)]
+    return plan_open_repo(repo, workspace_id=free_workspace) + [
+        SwitchWorkspace(workspace_id=free_workspace)
+    ]

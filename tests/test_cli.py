@@ -379,7 +379,7 @@ def test_switch_with_query(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "switch"])
     fzf_result = CompletedProcess(
-        args=["fzf"], returncode=0, stdout="myrepo/feat\n", stderr=""
+        args=["fzf"], returncode=0, stdout="wt: myrepo/feat\n", stderr=""
     )
     with (
         patch("ham.cli.git") as mock_git,
@@ -394,6 +394,7 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.execute"),
     ):
         mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.discover_repos.return_value = []
         mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
         mock_git.is_git_repo.return_value = True
         mock_git.worktree_exists.return_value = True
@@ -401,7 +402,7 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_hyprland.get_windows.return_value = []
         main()
     mock_run.assert_called_once_with(
-        ["fzf"], input="myrepo/feat", capture_output=True, text=True
+        ["fzf"], input="wt: myrepo/feat", capture_output=True, text=True
     )
     mock_plan.assert_called_once()
 
@@ -409,7 +410,7 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_switch_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "switch", "nope/nope"])
     with patch("ham.cli.git") as mock_git:
-        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.resolve_worktree.return_value = None
         with pytest.raises(SystemExit):
             main()
 
@@ -417,7 +418,7 @@ def test_switch_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_switch_no_worktrees(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "switch", "anything"])
     with patch("ham.cli.git") as mock_git:
-        mock_git.list_worktrees.return_value = []
+        mock_git.resolve_worktree.return_value = None
         with pytest.raises(SystemExit):
             main()
 
@@ -425,7 +426,7 @@ def test_switch_no_worktrees(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "rofi"])
     rofi_result = CompletedProcess(
-        args=["rofi"], returncode=0, stdout="myrepo/feat\n", stderr=""
+        args=["rofi"], returncode=0, stdout="wt: myrepo/feat\n", stderr=""
     )
     with (
         patch("ham.cli.git") as mock_git,
@@ -440,6 +441,7 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.execute"),
     ):
         mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.discover_repos.return_value = []
         mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
         mock_git.is_git_repo.return_value = True
         mock_git.worktree_exists.return_value = True
@@ -448,7 +450,7 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         main()
     mock_run.assert_called_once_with(
         ["rofi", "-dmenu", "-p", "ham", "-i"],
-        input="myrepo/feat",
+        input="wt: myrepo/feat",
         capture_output=True,
         text=True,
     )
@@ -463,8 +465,101 @@ def test_rofi_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.subprocess.run", return_value=rofi_result),
     ):
         mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.discover_repos.return_value = []
         with pytest.raises(SystemExit):
             main()
+
+
+def test_rofi_repo_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Selecting 'repo: foo' switches to the repo path directly, no worktree."""
+    monkeypatch.setattr("sys.argv", ["ham", "rofi"])
+    rofi_result = CompletedProcess(
+        args=["rofi"], returncode=0, stdout="repo: myrepo\n", stderr=""
+    )
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.subprocess.run", return_value=rofi_result),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 0)),
+        patch("ham.cli.find_free_workspace", return_value=5),
+        patch("ham.cli.plan_switch_repo", return_value=[]) as mock_plan,
+        patch("ham.cli.plan_switch") as mock_plan_wt,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.list_worktrees.return_value = []
+        mock_git.discover_repos.return_value = [Path("/r/org/myrepo")]
+        mock_git.resolve_repo.return_value = Path("/r/org/myrepo")
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_git.resolve_repo.assert_called_once_with("myrepo")
+    mock_plan.assert_called_once()
+    mock_plan_wt.assert_not_called()
+    assert mock_plan.call_args[0][0] == Path("/r/org/myrepo")
+
+
+def test_switch_repo_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ham switch 'repo: foo' resolves to repo path, uses plan_switch_repo."""
+    monkeypatch.setattr("sys.argv", ["ham", "switch", "repo: myrepo"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 0)),
+        patch("ham.cli.find_free_workspace", return_value=5),
+        patch("ham.cli.plan_switch_repo", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.resolve_repo.return_value = Path("/r/org/myrepo")
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_git.resolve_repo.assert_called_once_with("myrepo")
+    mock_plan.assert_called_once()
+
+
+def test_switch_repo_ambiguous_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """resolve_repo ValueError must surface as SystemExit."""
+    monkeypatch.setattr("sys.argv", ["ham", "switch", "repo: dup"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.resolve_repo.side_effect = ValueError("multiple repos found")
+        with pytest.raises(SystemExit):
+            main()
+
+
+def test_switch_no_entries_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No worktrees and no repos: fzf/rofi gets nothing to pick from."""
+    monkeypatch.setattr("sys.argv", ["ham", "switch"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.list_worktrees.return_value = []
+        mock_git.discover_repos.return_value = []
+        with pytest.raises(SystemExit):
+            main()
+
+
+def test_switch_repo_existing_workspace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing windows in repo path: switch to their workspace, no launch."""
+    monkeypatch.setattr("sys.argv", ["ham", "switch", "repo: myrepo"])
+    window = HyprlandWindow(
+        address="0x1", pid=1, class_name="alacritty", title="t", workspace_id=4
+    )
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.windows_in_path", return_value=[window]),
+        patch("ham.cli.get_workspace_for_windows", return_value=4),
+        patch("ham.cli.find_free_workspace") as mock_free,
+        patch("ham.cli.plan_switch_repo", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.resolve_repo.return_value = Path("/r/org/myrepo")
+        mock_hyprland.get_windows.return_value = [window]
+        main()
+    mock_free.assert_not_called()
+    call_kwargs = mock_plan.call_args
+    assert call_kwargs[1]["workspace_id"] == 4
+    assert call_kwargs[1]["free_workspace"] == 0
 
 
 def test_switch_existing_workspace(monkeypatch: pytest.MonkeyPatch) -> None:

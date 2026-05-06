@@ -14,45 +14,49 @@ from ham.hyprland import (
     windows_in_path,
 )
 from ham.actions import Action
-from ham.orchestrator import plan_close, plan_delete, plan_switch
+from ham.orchestrator import plan_close, plan_delete, plan_switch, plan_switch_repo
 
 log = logging.getLogger(__name__)
 
 
-def _get_selection(args: argparse.Namespace) -> str:
-    """Get worktree selection from args, fzf, or rofi."""
-    entries = [f"{name}/{branch}" for name, branch in git.list_worktrees()]
-    if not entries:
-        print("no worktrees found", file=sys.stderr)
-        raise SystemExit(1)
-
-    if args.command == "rofi":
-        result = subprocess.run(
-            ["rofi", "-dmenu", "-p", "ham", "-i"],
-            input="\n".join(entries),
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
+def _resolve_selection(selection: str) -> tuple[Path, str | None]:
+    """Parse a 'wt: name/branch' or 'repo: name' selection (prefix optional for worktrees)."""
+    if selection.startswith("repo: "):
+        name = selection[len("repo: ") :]
+        try:
+            return (git.resolve_repo(name), None)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
             raise SystemExit(1)
-        return result.stdout.strip()
+    target = selection[len("wt: ") :] if selection.startswith("wt: ") else selection
+    resolved = git.resolve_worktree(target)
+    if resolved is None:
+        print(f"worktree not found: {target}", file=sys.stderr)
+        raise SystemExit(1)
+    return (resolved[0], resolved[1])
 
-    if args.query:
-        for entry in entries:
-            if entry == args.query:
-                return entry
-        print(f"no match for: {args.query}", file=sys.stderr)
+
+def _get_selection(args: argparse.Namespace) -> tuple[Path, str | None]:
+    """Pick a worktree or repo. Returns (repo_path, branch) or (repo_path, None)."""
+    if args.command != "rofi" and args.query:
+        return _resolve_selection(args.query)
+
+    worktrees = git.list_worktrees()
+    repos = git.discover_repos()
+    entries = [f"wt: {name}/{branch}" for name, branch in worktrees] + [
+        f"repo: {p.name}" for p in repos
+    ]
+    if not entries:
+        print("no worktrees or repos found", file=sys.stderr)
         raise SystemExit(1)
 
+    cmd = ["rofi", "-dmenu", "-p", "ham", "-i"] if args.command == "rofi" else ["fzf"]
     result = subprocess.run(
-        ["fzf"],
-        input="\n".join(entries),
-        capture_output=True,
-        text=True,
+        cmd, input="\n".join(entries), capture_output=True, text=True
     )
     if result.returncode != 0:
         raise SystemExit(1)
-    return result.stdout.strip()
+    return _resolve_selection(result.stdout.strip())
 
 
 def _pick_repo() -> Path:
@@ -121,6 +125,18 @@ def _switch_actions(repo: Path, branch: str) -> list[Action]:
     )
 
 
+def _switch_repo_actions(repo: Path) -> list[Action]:
+    """Build plan_switch_repo actions for a bare repo path (no worktree)."""
+    windows = hyprland.get_windows()
+    matched = windows_in_path(windows, repo, own_last=False)
+    workspace_id = get_workspace_for_windows(matched)
+    return plan_switch_repo(
+        repo,
+        workspace_id=workspace_id,
+        free_workspace=_target_workspace() if workspace_id is None else 0,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ham", description="Hyprland Agent Manager")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -175,13 +191,11 @@ def main() -> None:
         return
 
     if args.command in ("switch", "rofi"):
-        selection = _get_selection(args)
-        resolved = git.resolve_worktree(selection)
-        if resolved is None:
-            print(f"worktree not found: {selection}", file=sys.stderr)
-            raise SystemExit(1)
-        repo, branch = resolved
-        execute(_switch_actions(repo, branch))
+        repo, branch = _get_selection(args)
+        if branch is None:
+            execute(_switch_repo_actions(repo))
+        else:
+            execute(_switch_actions(repo, branch))
         return
 
     if args.command in ("close", "delete"):

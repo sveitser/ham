@@ -14,7 +14,14 @@ from ham.actions import (
 )
 from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow, get_workspace_for_windows, windows_in_path
-from ham.orchestrator import plan_close, plan_delete, plan_open, plan_switch
+from ham.orchestrator import (
+    plan_close,
+    plan_delete,
+    plan_open,
+    plan_open_repo,
+    plan_switch,
+    plan_switch_repo,
+)
 
 REPO = Path("/fake/repo")
 WS_ID = 5
@@ -519,3 +526,50 @@ def test_launch_new_worktree_ok() -> None:
         i for i, a in enumerate(actions) if isinstance(a, LaunchProcess)
     )
     assert wt_idx < first_launch_idx
+
+
+def test_open_repo_no_worktree_actions() -> None:
+    actions = plan_open_repo(REPO, workspace_id=WS_ID)
+    assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
+    assert isinstance(actions[0], SetupDirenv)
+    assert actions[0].cwd == REPO
+    launches = [a for a in actions if isinstance(a, LaunchProcess)]
+    assert len(launches) == 3
+    assert all(lp.workspace_id == WS_ID for lp in launches)
+
+
+def test_open_repo_uses_repo_path() -> None:
+    actions = plan_open_repo(REPO, workspace_id=WS_ID)
+    launches = [a for a in actions if isinstance(a, LaunchProcess)]
+    assert launches[0].cmd == ["alacritty", "--working-directory", str(REPO)]
+    assert launches[1].cmd == [
+        "direnv",
+        "exec",
+        str(REPO),
+        "emacs",
+        str(REPO / "README.md"),
+    ]
+    assert launches[2].cmd == [
+        "alacritty",
+        "--working-directory",
+        str(REPO),
+        "-e",
+        "direnv",
+        "exec",
+        str(REPO),
+        "claude",
+        "--continue",
+    ]
+
+
+def test_switch_repo_focus_existing() -> None:
+    actions = plan_switch_repo(REPO, workspace_id=3, free_workspace=5)
+    assert actions == [SwitchWorkspace(workspace_id=3)]
+
+
+def test_switch_repo_open_new() -> None:
+    actions = plan_switch_repo(REPO, workspace_id=None, free_workspace=5)
+    assert isinstance(actions[-1], SwitchWorkspace)
+    assert actions[-1].workspace_id == 5
+    assert any(isinstance(a, LaunchProcess) for a in actions)
+    assert not any(isinstance(a, GitWorktreeAdd) for a in actions)

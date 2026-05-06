@@ -18,7 +18,7 @@ Workspace management tool for hyprland + Claude Code.
 - When spawning new windows, reuses the active workspace if it has ≤1 window, else picks the lowest free one
 - `ham list` - list active worktrees as repo_name/branch
 - `ham switch [query]` - focus existing worktree workspace (fzf if no query)
-- `ham rofi` - switch via rofi picker
+- `ham rofi` - switch via rofi picker (lists `wt: name/branch` entries and `repo: name` entries; selecting a `repo:` opens/switches to the bare repo path with no worktree)
 - `ham close [repo_name/branch | repo_path branch]` - close workspace windows (resolves from cwd if no args)
 - `ham delete [repo_name/branch | repo_path branch]` - delete worktree and close windows
 
