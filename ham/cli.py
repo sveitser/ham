@@ -37,27 +37,51 @@ def _resolve_selection(selection: str) -> tuple[Path, str | None]:
     return (resolved[0], resolved[1])
 
 
+def _entry_flag(s: WorktreeStatus) -> str:
+    return ("M" if s.has_modified else "") + ("?" if s.has_untracked else "")
+
+
+def picker_entries() -> list[str]:
+    worktrees = git.list_worktree_status()
+    repos = git.discover_repos()
+    lines = [f"wt: {s.repo_name}/{s.branch}\t{_entry_flag(s)}" for s in worktrees]
+    lines += [f"repo: {p.name}\t" for p in repos]
+    return lines
+
+
 def _get_selection(args: argparse.Namespace) -> tuple[Path, str | None]:
     """Pick a worktree or repo. Returns (repo_path, branch) or (repo_path, None)."""
-    if args.command != "rofi" and args.query:
+    if args.command != "rofi" and getattr(args, "query", None):
         return _resolve_selection(args.query)
 
-    worktrees = git.list_worktrees()
-    repos = git.discover_repos()
-    entries = [f"wt: {name}/{branch}" for name, branch in worktrees] + [
-        f"repo: {p.name}" for p in repos
-    ]
+    entries = picker_entries()
     if not entries:
         print("no worktrees or repos found", file=sys.stderr)
         raise SystemExit(1)
 
-    cmd = ["rofi", "-dmenu", "-p", "ham", "-i"] if args.command == "rofi" else ["fzf"]
+    if args.command == "rofi":
+        cmd = ["rofi", "-dmenu", "-p", "ham", "-i"]
+    else:
+        ham_cmd = shlex.join([sys.executable, "-m", "ham.cli"])
+        bind = f"ctrl-d:execute({ham_cmd} delete {{1}})+reload({ham_cmd} _entries)"
+        cmd = [
+            "fzf",
+            "--prompt",
+            "ham> ",
+            "--header",
+            "enter: switch   ctrl-d: delete   esc: quit",
+            "--delimiter",
+            "\t",
+            "--bind",
+            bind,
+        ]
     result = subprocess.run(
         cmd, input="\n".join(entries), capture_output=True, text=True
     )
     if result.returncode != 0:
         raise SystemExit(1)
-    return _resolve_selection(result.stdout.strip())
+    selection = result.stdout.strip().split("\t", 1)[0]
+    return _resolve_selection(selection)
 
 
 def _pick_repo() -> Path:
@@ -104,43 +128,6 @@ def _target_workspace() -> int:
     return find_free_workspace()
 
 
-def _prune_flag(s: WorktreeStatus) -> str:
-    flag = ""
-    if s.has_modified:
-        flag += "M"
-    if s.has_untracked:
-        flag += "?"
-    return flag
-
-
-def format_prune_lines(statuses: list[WorktreeStatus]) -> list[str]:
-    return [f"{s.repo_name}/{s.branch}\t{_prune_flag(s)}" for s in statuses]
-
-
-def _run_prune() -> None:
-    statuses = git.list_worktree_status()
-    if not statuses:
-        print("no worktrees", file=sys.stderr)
-        return
-    ham_cmd = shlex.join([sys.executable, "-m", "ham.cli"])
-    bind = f"ctrl-d:execute({ham_cmd} delete {{1}})+reload({ham_cmd} prune --list)"
-    subprocess.run(
-        [
-            "fzf",
-            "--prompt",
-            "prune> ",
-            "--header",
-            "ctrl-d: delete   esc: quit",
-            "--delimiter",
-            "\t",
-            "--bind",
-            bind,
-        ],
-        input="\n".join(format_prune_lines(statuses)),
-        text=True,
-    )
-
-
 def _switch_actions(repo: Path, branch: str) -> list[Action]:
     """Build plan_switch actions for a repo/branch."""
     wt_path = worktree_path(repo, branch)
@@ -177,7 +164,7 @@ def _switch_repo_actions(repo: Path) -> list[Action]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ham", description="Hyprland Agent Manager")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
     open_parser = subparsers.add_parser(
         "open", help="open or switch to worktree (interactive fzf if no args)"
@@ -207,10 +194,7 @@ def main() -> None:
 
     subparsers.add_parser("rofi", help="switch to worktree via rofi picker")
 
-    prune_parser = subparsers.add_parser(
-        "prune", help="interactive worktree pruner (press d to delete)"
-    )
-    prune_parser.add_argument("--list", action="store_true", help=argparse.SUPPRESS)
+    subparsers.add_parser("_entries")
 
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
@@ -233,15 +217,12 @@ def main() -> None:
             print(f"{repo_name}/{branch}")
         return
 
-    if args.command == "prune":
-        if args.list:
-            for line in format_prune_lines(git.list_worktree_status()):
-                print(line)
-            return
-        _run_prune()
+    if args.command == "_entries":
+        for line in picker_entries():
+            print(line)
         return
 
-    if args.command in ("switch", "rofi"):
+    if args.command in (None, "switch", "rofi"):
         repo, branch = _get_selection(args)
         if branch is None:
             execute(_switch_repo_actions(repo))
@@ -250,6 +231,11 @@ def main() -> None:
         return
 
     if args.command in ("close", "delete"):
+        if args.target and args.target.startswith("repo: "):
+            print(f"cannot {args.command} a repo entry", file=sys.stderr)
+            raise SystemExit(1)
+        if args.target:
+            args.target = args.target.removeprefix("wt: ")
         if args.target and args.branch_name:
             repo = Path(args.target).resolve()
             branch = args.branch_name

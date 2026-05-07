@@ -12,16 +12,16 @@ Workspace management tool for hyprland + Claude Code.
 - `just check` - fmt + lint + cov
 
 ## CLI Usage
+- `ham` - default fzf picker over worktrees + repos (`wt: ...` / `repo: ...` entries with `M`/`?` flags); `enter` switches, `ctrl-d` deletes the worktree
 - `ham open` - interactive fzf: pick repo from REPO_DIR, then pick/type branch
 - `ham open repo_name/branch` - resolve existing worktree or discover repo in REPO_DIR
 - `ham open /path/to/repo branch` - explicit repo path + branch
 - When spawning new windows, reuses the active workspace if it has ≤1 window, else picks the lowest free one
 - `ham list` - list active worktrees as repo_name/branch
-- `ham switch [query]` - focus existing worktree workspace (fzf if no query)
-- `ham rofi` - switch via rofi picker (lists `wt: name/branch` entries and `repo: name` entries; selecting a `repo:` opens/switches to the bare repo path with no worktree)
+- `ham switch [query]` - same as `ham`; with query it directly resolves and switches
+- `ham rofi` - same picker via rofi (no ctrl-d binding)
 - `ham close [repo_name/branch | repo_path branch]` - close workspace windows (resolves from cwd if no args)
-- `ham delete [repo_name/branch | repo_path branch]` - delete worktree and close windows
-- `ham prune` - interactive fzf list of worktrees with `M`/`?` flags (modified/untracked); `ctrl-d` to delete
+- `ham delete [repo_name/branch | repo_path branch]` - delete worktree and close windows (also accepts `wt: repo/branch` from picker)
 
 ## Environment
 - `HAM_REPO_DIR` - repo discovery root (default: `~/r`), scanned 2 levels deep (org/repo)

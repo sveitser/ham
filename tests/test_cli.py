@@ -4,9 +4,22 @@ from unittest.mock import patch
 
 import pytest
 
-from ham.cli import format_prune_lines, main
+from ham.cli import main
 from ham.git import WorktreeStatus
 from ham.hyprland import HyprlandWindow
+
+
+def _wt_status(
+    repo_name: str, branch: str, modified: bool = False, untracked: bool = False
+):
+    return WorktreeStatus(
+        repo=Path(f"/r/{repo_name}"),
+        branch=branch,
+        wt_path=Path(f"/wt/{repo_name}/{branch}"),
+        has_modified=modified,
+        has_untracked=untracked,
+    )
+
 
 FAKE_WT = Path("/fake/wt")
 
@@ -325,12 +338,6 @@ def test_delete_no_args_resolves_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_exec.assert_called_once_with([])
 
 
-def test_missing_subcommand_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("sys.argv", ["ham"])
-    with pytest.raises(SystemExit):
-        main()
-
-
 def test_list_prints_worktrees(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -380,7 +387,7 @@ def test_switch_with_query(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "switch"])
     fzf_result = CompletedProcess(
-        args=["fzf"], returncode=0, stdout="wt: myrepo/feat\n", stderr=""
+        args=["fzf"], returncode=0, stdout="wt: myrepo/feat\tM\n", stderr=""
     )
     with (
         patch("ham.cli.git") as mock_git,
@@ -394,7 +401,9 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
     ):
-        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.list_worktree_status.return_value = [
+            _wt_status("myrepo", "feat", True)
+        ]
         mock_git.discover_repos.return_value = []
         mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
         mock_git.is_git_repo.return_value = True
@@ -402,9 +411,12 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_git.branch_exists.return_value = True
         mock_hyprland.get_windows.return_value = []
         main()
-    mock_run.assert_called_once_with(
-        ["fzf"], input="wt: myrepo/feat", capture_output=True, text=True
-    )
+    cmd = mock_run.call_args.args[0]
+    assert cmd[0] == "fzf"
+    assert "--bind" in cmd
+    bind = cmd[cmd.index("--bind") + 1]
+    assert bind.startswith("ctrl-d:")
+    assert mock_run.call_args.kwargs["input"] == "wt: myrepo/feat\tM"
     mock_plan.assert_called_once()
 
 
@@ -427,7 +439,7 @@ def test_switch_no_worktrees(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "rofi"])
     rofi_result = CompletedProcess(
-        args=["rofi"], returncode=0, stdout="wt: myrepo/feat\n", stderr=""
+        args=["rofi"], returncode=0, stdout="wt: myrepo/feat\t\n", stderr=""
     )
     with (
         patch("ham.cli.git") as mock_git,
@@ -441,7 +453,7 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
         patch("ham.cli.execute"),
     ):
-        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.list_worktree_status.return_value = [_wt_status("myrepo", "feat")]
         mock_git.discover_repos.return_value = []
         mock_git.resolve_worktree.return_value = (Path("/repo"), "feat")
         mock_git.is_git_repo.return_value = True
@@ -451,7 +463,7 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         main()
     mock_run.assert_called_once_with(
         ["rofi", "-dmenu", "-p", "ham", "-i"],
-        input="wt: myrepo/feat",
+        input="wt: myrepo/feat\t",
         capture_output=True,
         text=True,
     )
@@ -465,7 +477,7 @@ def test_rofi_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.git") as mock_git,
         patch("ham.cli.subprocess.run", return_value=rofi_result),
     ):
-        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.list_worktree_status.return_value = [_wt_status("myrepo", "feat")]
         mock_git.discover_repos.return_value = []
         with pytest.raises(SystemExit):
             main()
@@ -489,7 +501,7 @@ def test_rofi_repo_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         patch("ham.cli.plan_switch") as mock_plan_wt,
         patch("ham.cli.execute"),
     ):
-        mock_git.list_worktrees.return_value = []
+        mock_git.list_worktree_status.return_value = []
         mock_git.discover_repos.return_value = [Path("/r/org/myrepo")]
         mock_git.resolve_repo.return_value = Path("/r/org/myrepo")
         mock_hyprland.get_windows.return_value = []
@@ -533,7 +545,7 @@ def test_switch_no_entries_fails(monkeypatch: pytest.MonkeyPatch) -> None:
     """No worktrees and no repos: fzf/rofi gets nothing to pick from."""
     monkeypatch.setattr("sys.argv", ["ham", "switch"])
     with patch("ham.cli.git") as mock_git:
-        mock_git.list_worktrees.return_value = []
+        mock_git.list_worktree_status.return_value = []
         mock_git.discover_repos.return_value = []
         with pytest.raises(SystemExit):
             main()
@@ -750,80 +762,103 @@ def test_fzf_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
             main()
 
 
-def _wt_status(repo_name: str, branch: str, modified: bool, untracked: bool):
-    return WorktreeStatus(
-        repo=Path(f"/r/{repo_name}"),
-        branch=branch,
-        wt_path=Path(f"/wt/{repo_name}/{branch}"),
-        has_modified=modified,
-        has_untracked=untracked,
+def test_default_no_command_runs_picker(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham"])
+    fzf_result = CompletedProcess(
+        args=["fzf"], returncode=0, stdout="wt: a/main\t\n", stderr=""
     )
-
-
-def test_format_prune_lines_clean() -> None:
-    lines = format_prune_lines([_wt_status("repo", "feat", False, False)])
-    assert lines == ["repo/feat\t"]
-
-
-def test_format_prune_lines_modified() -> None:
-    lines = format_prune_lines([_wt_status("repo", "feat", True, False)])
-    assert lines == ["repo/feat\tM"]
-
-
-def test_format_prune_lines_untracked() -> None:
-    lines = format_prune_lines([_wt_status("repo", "feat", False, True)])
-    assert lines == ["repo/feat\t?"]
-
-
-def test_format_prune_lines_both() -> None:
-    lines = format_prune_lines([_wt_status("repo", "feat", True, True)])
-    assert lines == ["repo/feat\tM?"]
-
-
-def test_prune_list_prints(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setattr("sys.argv", ["ham", "prune", "--list"])
-    with patch("ham.cli.git") as mock_git:
-        mock_git.list_worktree_status.return_value = [
-            _wt_status("a", "main", False, False),
-            _wt_status("b", "feat", True, True),
-        ]
-        main()
-    out = capsys.readouterr().out
-    assert out == "a/main\t\nb/feat\tM?\n"
-
-
-def test_prune_runs_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("sys.argv", ["ham", "prune"])
-    fzf_result = CompletedProcess(args=["fzf"], returncode=0, stdout="", stderr="")
     with (
         patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
         patch("ham.cli.subprocess.run", return_value=fzf_result) as mock_run,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.windows_in_path", return_value=[]),
+        patch("ham.cli.get_workspace_for_windows", return_value=None),
+        patch("ham.cli.get_active_workspace", return_value=(1, 0)),
+        patch("ham.cli.find_free_workspace", return_value=5),
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
     ):
-        mock_git.list_worktree_status.return_value = [
-            _wt_status("a", "main", False, False)
-        ]
+        mock_git.list_worktree_status.return_value = [_wt_status("a", "main")]
+        mock_git.discover_repos.return_value = []
+        mock_git.resolve_worktree.return_value = (Path("/r/a"), "main")
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = True
+        mock_git.branch_exists.return_value = True
+        mock_hyprland.get_windows.return_value = []
         main()
-    mock_run.assert_called_once()
     cmd = mock_run.call_args.args[0]
     assert cmd[0] == "fzf"
-    assert "--bind" in cmd
     bind = cmd[cmd.index("--bind") + 1]
     assert bind.startswith("ctrl-d:")
-    assert "execute(" in bind and "delete {1}" in bind
-    assert "reload(" in bind and "prune --list" in bind
+    assert "delete {1}" in bind and "_entries" in bind
+    mock_plan.assert_called_once()
 
 
-def test_prune_empty(
+def test_entries_subcommand_prints(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("sys.argv", ["ham", "prune"])
+    monkeypatch.setattr("sys.argv", ["ham", "_entries"])
+    with patch("ham.cli.git") as mock_git:
+        mock_git.list_worktree_status.return_value = [
+            _wt_status("a", "main"),
+            _wt_status("b", "feat", modified=True, untracked=True),
+        ]
+        mock_git.discover_repos.return_value = [Path("/r/org/c")]
+        main()
+    assert capsys.readouterr().out == "wt: a/main\t\nwt: b/feat\tM?\nrepo: c\t\n"
+
+
+def test_delete_strips_wt_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ham delete 'wt: foo/bar' resolves bar via foo (prefix stripped)."""
+    monkeypatch.setattr("sys.argv", ["ham", "delete", "wt: myrepo/feat"])
     with (
         patch("ham.cli.git") as mock_git,
-        patch("ham.cli.subprocess.run") as mock_run,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_delete", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
     ):
-        mock_git.list_worktree_status.return_value = []
+        mock_git.resolve_worktree.return_value = (Path("/r/myrepo"), "feat")
+        mock_git.is_dirty.return_value = (False, "")
+        mock_git.worktree_exists.return_value = True
+        mock_hyprland.get_windows.return_value = []
         main()
-    mock_run.assert_not_called()
-    assert "no worktrees" in capsys.readouterr().err
+    mock_git.resolve_worktree.assert_called_once_with("myrepo/feat")
+    mock_plan.assert_called_once()
+
+
+def test_delete_repo_prefix_errors(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "delete", "repo: myrepo"])
+    with patch("ham.cli.git"):
+        with pytest.raises(SystemExit):
+            main()
+    assert "cannot delete a repo entry" in capsys.readouterr().err
+
+
+def test_close_repo_prefix_errors(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "close", "repo: myrepo"])
+    with patch("ham.cli.git"):
+        with pytest.raises(SystemExit):
+            main()
+    assert "cannot close a repo entry" in capsys.readouterr().err
+
+
+def test_close_strips_wt_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "close", "wt: myrepo/feat"])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.hyprland") as mock_hyprland,
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_close", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.resolve_worktree.return_value = (Path("/r/myrepo"), "feat")
+        mock_hyprland.get_windows.return_value = []
+        main()
+    mock_git.resolve_worktree.assert_called_once_with("myrepo/feat")
+    mock_plan.assert_called_once()
