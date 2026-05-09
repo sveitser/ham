@@ -5,6 +5,7 @@ import pytest
 
 from ham.actions import (
     CloseWindow,
+    GitSetBranchUpstream,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -47,7 +48,8 @@ def test_open_create_worktree_ok() -> None:
     )
     assert isinstance(actions[0], GitWorktreeAdd)
     assert actions[0].create_branch is True
-    assert isinstance(actions[1], SetupDirenv)
+    assert isinstance(actions[1], GitSetBranchUpstream)
+    assert isinstance(actions[2], SetupDirenv)
     assert len([a for a in actions if isinstance(a, LaunchProcess)]) == 1
 
 
@@ -207,6 +209,113 @@ def test_open_remote_branch_creates_tracking() -> None:
     assert isinstance(wt_add, GitWorktreeAdd)
     assert wt_add.create_branch is True
     assert wt_add.start_point == "origin/from-remote"
+
+
+def test_open_new_branch_defaults_to_origin_main() -> None:
+    actions = plan_open(
+        REPO,
+        "fresh",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        remote_branch_exists=False,
+        workspace_id=WS_ID,
+        backend=_mock_backend(),
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.create_branch is True
+    assert wt_add.start_point == "origin/main"
+    assert wt_add.no_track is True
+    assert actions[1] == GitSetBranchUpstream(repo=REPO, branch="fresh")
+
+
+def test_open_new_branch_tracks_origin_branch_not_start_point() -> None:
+    """New branches must track origin/$branch even when started from origin/dev."""
+    actions = plan_open(
+        REPO,
+        "feature",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        remote_branch_exists=False,
+        start_point="origin/dev",
+        workspace_id=WS_ID,
+        backend=_mock_backend(),
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.no_track is True
+    assert actions[1] == GitSetBranchUpstream(repo=REPO, branch="feature")
+
+
+def test_open_existing_branch_no_upstream_action() -> None:
+    actions = plan_open(
+        REPO,
+        "existing",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=True,
+        workspace_id=WS_ID,
+        backend=_mock_backend(),
+    )
+    assert not any(isinstance(a, GitSetBranchUpstream) for a in actions)
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.no_track is False
+
+
+def test_open_explicit_start_point_overrides_default() -> None:
+    actions = plan_open(
+        REPO,
+        "fresh",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        remote_branch_exists=False,
+        start_point="origin/dev",
+        workspace_id=WS_ID,
+        backend=_mock_backend(),
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.create_branch is True
+    assert wt_add.start_point == "origin/dev"
+
+
+def test_open_explicit_start_point_overrides_remote_tracking() -> None:
+    actions = plan_open(
+        REPO,
+        "from-remote",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        remote_branch_exists=True,
+        start_point="origin/dev",
+        workspace_id=WS_ID,
+        backend=_mock_backend(),
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.create_branch is True
+    assert wt_add.start_point == "origin/dev"
+
+
+def test_open_local_branch_ignores_start_point() -> None:
+    actions = plan_open(
+        REPO,
+        "existing",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=True,
+        start_point="origin/dev",
+        workspace_id=WS_ID,
+        backend=_mock_backend(),
+    )
+    wt_add = actions[0]
+    assert isinstance(wt_add, GitWorktreeAdd)
+    assert wt_add.create_branch is False
+    assert wt_add.start_point is None
 
 
 def test_open_local_branch_wins_over_remote() -> None:

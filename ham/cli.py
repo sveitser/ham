@@ -150,7 +150,9 @@ def _target_workspace(backend, hint: str = "") -> str:
     return active_id if count <= 1 else backend.find_free_workspace()
 
 
-def _switch_actions(repo: Path, branch: str, backend) -> list[Action]:
+def _switch_actions(
+    repo: Path, branch: str, backend, *, start_point: str | None = None
+) -> list[Action]:
     """Build plan_switch actions for a repo/branch."""
     wt_path = worktree_path(repo, branch)
     windows = backend.get_windows()
@@ -173,6 +175,7 @@ def _switch_actions(repo: Path, branch: str, backend) -> list[Action]:
         branch_exists=git.branch_exists(repo, branch),
         remote_branch_exists=git.remote_branch_exists(repo, branch),
         backend=backend,
+        start_point=start_point,
     )
 
 
@@ -203,6 +206,12 @@ def main() -> None:
         "target", nargs="?", help="repo_name/branch or repo_path (with branch_name)"
     )
     open_parser.add_argument("branch_name", nargs="?", help="branch name")
+    open_parser.add_argument(
+        "--from",
+        dest="start_point",
+        default=None,
+        help="start point for new branches (default: origin/main)",
+    )
 
     for name, help_text in (
         ("close", "close workspace windows for a worktree"),
@@ -344,7 +353,7 @@ def main() -> None:
 
     match args.command:
         case "open":
-            actions = _switch_actions(repo, branch, backend)
+            actions = _switch_actions(repo, branch, backend, start_point=args.start_point)
         case "close":
             windows = backend.get_windows()
             matched = backend.windows_in_path(windows, wt_path)
@@ -361,11 +370,11 @@ def main() -> None:
                 status=status,
                 windows=matched,
             )
-        case _:
+        case _:  # pragma: no cover
             raise AssertionError(f"unhandled command: {args.command}")
 
     execute(actions, backend.name)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

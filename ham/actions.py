@@ -14,6 +14,13 @@ class GitWorktreeAdd(Action):
     branch: str
     create_branch: bool
     start_point: str | None = None
+    no_track: bool = False
+
+
+@dataclass
+class GitSetBranchUpstream(Action):
+    repo: Path
+    branch: str
 
 
 @dataclass

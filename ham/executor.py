@@ -7,6 +7,7 @@ import subprocess
 from ham.actions import (
     Action,
     CloseWindow,
+    GitSetBranchUpstream,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -29,8 +30,12 @@ def execute(actions: list[Action], backend: str = "hyprland") -> None:
 
 def _execute_one(action: Action, backend: str = "hyprland") -> None:
     match action:
-        case GitWorktreeAdd(repo, worktree_path, branch, create_branch, start_point):
+        case GitWorktreeAdd(
+            repo, worktree_path, branch, create_branch, start_point, no_track
+        ):
             cmd = ["git", "-C", str(repo), "worktree", "add"]
+            if no_track:
+                cmd.append("--no-track")
             if create_branch:
                 cmd.extend(["-b", branch])
             cmd.append(str(worktree_path))
@@ -39,6 +44,30 @@ def _execute_one(action: Action, backend: str = "hyprland") -> None:
             elif not create_branch:
                 cmd.append(branch)
             subprocess.run(cmd, check=True)
+
+        case GitSetBranchUpstream(repo, branch):
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "config",
+                    f"branch.{branch}.remote",
+                    "origin",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo),
+                    "config",
+                    f"branch.{branch}.merge",
+                    f"refs/heads/{branch}",
+                ],
+                check=True,
+            )
 
         case GitWorktreeRemove(repo, worktree_path, force):
             cmd = ["git", "-C", str(repo), "worktree", "remove"]

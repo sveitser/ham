@@ -7,6 +7,7 @@ import pytest
 from ham.actions import (
     Action,
     CloseWindow,
+    GitSetBranchUpstream,
     GitWorktreeAdd,
     GitWorktreeRemove,
     LaunchProcess,
@@ -69,6 +70,56 @@ def test_git_worktree_add_tracks_remote() -> None:
         ],
         check=True,
     )
+
+
+def test_git_worktree_add_no_track() -> None:
+    action = GitWorktreeAdd(
+        repo=REPO,
+        worktree_path=WT,
+        branch="feat",
+        create_branch=True,
+        start_point="origin/main",
+        no_track=True,
+    )
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    mock_run.assert_called_once_with(
+        [
+            "git",
+            "-C",
+            str(REPO),
+            "worktree",
+            "add",
+            "--no-track",
+            "-b",
+            "feat",
+            str(WT),
+            "origin/main",
+        ],
+        check=True,
+    )
+
+
+def test_git_set_branch_upstream() -> None:
+    action = GitSetBranchUpstream(repo=REPO, branch="feat")
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([action])
+    assert mock_run.call_args_list[0].args[0] == [
+        "git",
+        "-C",
+        str(REPO),
+        "config",
+        "branch.feat.remote",
+        "origin",
+    ]
+    assert mock_run.call_args_list[1].args[0] == [
+        "git",
+        "-C",
+        str(REPO),
+        "config",
+        "branch.feat.merge",
+        "refs/heads/feat",
+    ]
 
 
 def test_git_worktree_remove() -> None:
