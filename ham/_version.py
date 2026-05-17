@@ -1,0 +1,3 @@
+VERSION = "0.1.0"
+GIT_REV = "@GIT_REV@"
+GIT_DATE = "@GIT_DATE@"

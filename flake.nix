@@ -36,13 +36,21 @@
           };
         };
       };
+    in
+    let
+      gitArgs = {
+        gitRev = if self ? shortRev then self.shortRev else "dirty";
+        gitDate =
+          let d = self.lastModifiedDate;
+          in "${builtins.substring 0 4 d}-${builtins.substring 4 2 d}-${builtins.substring 6 2 d}_${builtins.substring 8 2 d}_${builtins.substring 10 2 d}_${builtins.substring 12 2 d}";
+      };
     in {
       overlays.default = final: prev: {
-        ham-unwrapped = final.python3Packages.callPackage ./nix/package.nix { };
+        ham-unwrapped = final.python3Packages.callPackage ./nix/package.nix gitArgs;
       };
 
       packages = eachSystem (pkgs: system: {
-        ham-unwrapped = pkgs.python3Packages.callPackage ./nix/package.nix { };
+        ham-unwrapped = pkgs.python3Packages.callPackage ./nix/package.nix gitArgs;
         default = self.packages.${system}.ham-unwrapped;
       });
 

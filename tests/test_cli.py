@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ham.cli import main
+from ham.cli import _version_str, main
 from ham.git import WorktreeStatus
 from ham.hyprland import HyprlandWindow
 
@@ -883,3 +883,45 @@ def test_target_workspace_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
     mock_plan.assert_called_once()
     call_kwargs = mock_plan.call_args
     assert call_kwargs[1]["backend"] is backend
+
+
+def test_version_str_dev_uses_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ham.cli.GIT_REV", "@GIT_REV@")
+    monkeypatch.setattr("ham.cli.GIT_DATE", "@GIT_DATE@")
+    with patch("ham.cli.subprocess.run") as mock_run:
+        mock_run.side_effect = [
+            CompletedProcess([], 0, stdout="abc1234\n"),
+            CompletedProcess([], 0, stdout="1747520655\n"),
+        ]
+        result = _version_str()
+    from datetime import datetime, timezone
+
+    epoch = 1747520655
+    expected_ts = datetime.fromtimestamp(epoch, tz=timezone.utc).strftime(
+        "%Y-%m-%d_%H_%M_%S"
+    )
+    assert result == f"0.1.0+abc1234.{expected_ts}"
+
+
+def test_version_str_dev_git_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ham.cli.GIT_REV", "@GIT_REV@")
+    monkeypatch.setattr("ham.cli.GIT_DATE", "@GIT_DATE@")
+    with patch("ham.cli.subprocess.run", side_effect=Exception("no git")):
+        result = _version_str()
+    assert result == "0.1.0+dev.unknown"
+
+
+def test_version_str_baked(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ham.cli.GIT_REV", "deadbeef")
+    monkeypatch.setattr("ham.cli.GIT_DATE", "2026-05-17_22_00_00")
+    assert _version_str() == "0.1.0+deadbeef.2026-05-17_22_00_00"
+
+
+def test_version_command(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "version"])
+    monkeypatch.setattr("ham.cli.GIT_REV", "deadbeef")
+    monkeypatch.setattr("ham.cli.GIT_DATE", "2026-05-17_22_00_00")
+    main()
+    assert capsys.readouterr().out.strip() == "0.1.0+deadbeef.2026-05-17_22_00_00"

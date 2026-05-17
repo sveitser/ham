@@ -3,6 +3,7 @@ import logging
 import shlex
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ham import git
@@ -10,9 +11,35 @@ from ham.backend import detect_backend
 from ham.executor import execute
 from ham.git import DATA_DIR, WorktreeStatus, worktree_path
 from ham.actions import Action
+from ham._version import GIT_DATE, GIT_REV, VERSION
 from ham.orchestrator import plan_close, plan_delete, plan_switch, plan_switch_repo
 
 log = logging.getLogger(__name__)
+
+
+def _version_str() -> str:
+    rev, ts = GIT_REV, GIT_DATE
+    if "@" in rev:
+        pkg_dir = Path(__file__).parent
+        try:
+            rev = subprocess.run(
+                ["git", "-C", str(pkg_dir), "rev-parse", "--short", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            epoch = subprocess.run(
+                ["git", "-C", str(pkg_dir), "log", "-1", "--format=%ct"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            ts = datetime.fromtimestamp(int(epoch), tz=timezone.utc).strftime(
+                "%Y-%m-%d_%H_%M_%S"
+            )
+        except Exception:
+            rev, ts = "dev", "unknown"
+    return f"{VERSION}+{rev}.{ts}"
 
 
 def _resolve_selection(selection: str) -> tuple[Path, str | None]:
@@ -198,6 +225,7 @@ def main() -> None:
     subparsers.add_parser("rofi", help="switch to worktree via rofi picker")
 
     subparsers.add_parser("_entries")
+    subparsers.add_parser("version", help="show version and git info")
 
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
@@ -216,6 +244,10 @@ def main() -> None:
     logging.getLogger().addHandler(fh)
 
     backend = detect_backend()
+
+    if args.command == "version":
+        print(_version_str())
+        return
 
     if args.command == "list":
         for repo_name, branch in git.list_worktrees():
