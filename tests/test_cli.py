@@ -302,8 +302,25 @@ def test_close_no_args_not_in_worktree(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "close"])
     with patch("ham.cli.git") as mock_git:
         mock_git.resolve_from_cwd.return_value = None
+        mock_git.git_root_from_cwd.return_value = None
         with pytest.raises(SystemExit):
             main()
+
+
+def test_close_no_args_falls_back_to_git_root(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sys.argv", ["ham", "close"])
+    backend = _mock_backend()
+    repo_path = Path("/r/myrepo")
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.plan_close", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.resolve_from_cwd.return_value = None
+        mock_git.git_root_from_cwd.return_value = repo_path
+        main()
+    mock_plan.assert_called_once_with(repo_path, backend.get_windows())
 
 
 def test_delete_no_args_resolves_cwd(monkeypatch: pytest.MonkeyPatch) -> None:

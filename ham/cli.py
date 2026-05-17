@@ -263,11 +263,19 @@ def main() -> None:
                 log.debug("resolved from target: repo=%s branch=%s", repo, branch)
             else:
                 resolved = git.resolve_from_cwd()
-                if resolved is None:
+                if resolved is not None:
+                    repo, branch = resolved
+                    log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
+                elif args.command == "close":
+                    root = git.git_root_from_cwd()
+                    if root is None:
+                        print("not in a git repo and no args given", file=sys.stderr)
+                        raise SystemExit(1)
+                    repo, branch = root, None
+                    log.debug("resolved repo from cwd: repo=%s", repo)
+                else:
                     print("not in a ham worktree and no args given", file=sys.stderr)
                     raise SystemExit(1)
-                repo, branch = resolved
-                log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
         wt_path = worktree_path(repo, branch) if branch is not None else repo
     else:
         # Resolve target to (repo, branch)

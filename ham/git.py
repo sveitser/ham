@@ -247,6 +247,18 @@ def list_branches(repo: Path) -> list[str]:  # pragma: no cover
     return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
 
+def git_root_from_cwd() -> Path | None:  # pragma: no cover
+    """Return the git repo root of cwd, or None if not in a git repo."""
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    return Path(result.stdout.strip())
+
+
 def is_git_repo(path: Path) -> bool:  # pragma: no cover
     result = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--git-dir"],
