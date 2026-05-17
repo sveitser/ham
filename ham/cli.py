@@ -347,17 +347,19 @@ def main() -> None:
             actions = _switch_actions(repo, branch, backend)
         case "close":
             windows = backend.get_windows()
-            actions = plan_close(wt_path, windows)
+            matched = backend.windows_in_path(windows, wt_path)
+            actions = plan_close(matched)
         case "delete":
             dirty, status = git.is_dirty(wt_path)
             windows = backend.get_windows()
+            matched = backend.windows_in_path(windows, wt_path)
             actions = plan_delete(
                 repo,
                 branch,
                 worktree_exists=git.worktree_exists(repo, wt_path),
                 dirty=dirty,
                 status=status,
-                windows=windows,
+                windows=matched,
             )
         case _:
             raise AssertionError(f"unhandled command: {args.command}")

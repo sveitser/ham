@@ -320,7 +320,7 @@ def test_close_no_args_falls_back_to_git_root(monkeypatch: pytest.MonkeyPatch) -
         mock_git.resolve_from_cwd.return_value = None
         mock_git.git_root_from_cwd.return_value = repo_path
         main()
-    mock_plan.assert_called_once_with(repo_path, backend.get_windows())
+    mock_plan.assert_called_once_with(backend.windows_in_path.return_value)
 
 
 def test_delete_no_args_resolves_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -813,7 +813,7 @@ def test_close_repo_prefix_ok(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_git.resolve_repo.return_value = repo_path
         main()
     mock_git.resolve_repo.assert_called_once_with("myrepo")
-    mock_plan.assert_called_once_with(repo_path, backend.get_windows())
+    mock_plan.assert_called_once_with(backend.windows_in_path.return_value)
 
 
 def test_close_strips_wt_prefix(monkeypatch: pytest.MonkeyPatch) -> None:

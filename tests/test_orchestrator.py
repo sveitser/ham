@@ -113,73 +113,15 @@ def test_open_sanitize_branch_ok() -> None:
     assert wt_add.worktree_path == worktree_path(REPO, "test/sanitize")
 
 
-def test_close_match_windows_ok() -> None:
-    wt_path = worktree_path(REPO, "feat")
+def test_close_creates_close_actions() -> None:
     windows = [
-        HyprlandWindow(
-            window_id="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
-        ),
-        HyprlandWindow(
-            window_id="0x2",
-            pid=2,
-            class_name="alacritty",
-            title="t",
-            cwds=[wt_path / "sub"],
-        ),
+        HyprlandWindow(window_id="0x1", pid=1, class_name="alacritty", title="t"),
+        HyprlandWindow(window_id="0x2", pid=2, class_name="emacs", title="t"),
     ]
-    actions = plan_close(wt_path, windows)
+    actions = plan_close(windows)
     assert len(actions) == 2
     assert all(isinstance(a, CloseWindow) for a in actions)
-
-
-def test_close_skip_unrelated_ok() -> None:
-    wt_path = worktree_path(REPO, "feat")
-    windows = [
-        HyprlandWindow(
-            window_id="0x1",
-            pid=1,
-            class_name="alacritty",
-            title="t",
-            cwds=[Path("/tmp/other")],
-        ),
-    ]
-    actions = plan_close(wt_path, windows)
-    assert len(actions) == 0
-
-
-def test_close_matches_descendant_cwd() -> None:
-    """Regression: terminal whose own cwd is ~ but has a child (claude) in worktree."""
-    wt_path = worktree_path(REPO, "feat")
-    windows = [
-        HyprlandWindow(
-            window_id="0x1",
-            pid=1,
-            class_name="alacritty",
-            title="t",
-            cwds=[Path("/home/user"), wt_path],
-        ),
-    ]
-    actions = plan_close(wt_path, windows)
-    assert len(actions) == 1
-    assert isinstance(actions[0], CloseWindow)
-
-
-def test_close_repo_path_ok() -> None:
-    windows = [
-        HyprlandWindow(
-            window_id="0x1", pid=1, class_name="alacritty", title="t", cwds=[REPO]
-        ),
-        HyprlandWindow(
-            window_id="0x2",
-            pid=2,
-            class_name="emacs",
-            title="t",
-            cwds=[REPO / "src"],
-        ),
-    ]
-    actions = plan_close(REPO, windows)
-    assert len(actions) == 2
-    assert all(isinstance(a, CloseWindow) for a in actions)
+    assert [a.window_id for a in actions] == ["0x1", "0x2"]
 
 
 def test_delete_clean_remove_ok() -> None:
@@ -295,7 +237,7 @@ def test_open_local_branch_wins_over_remote() -> None:
 
 
 def test_close_no_windows_ok() -> None:
-    actions = plan_close(worktree_path(REPO, "feat"), [])
+    actions = plan_close([])
     assert actions == []
 
 
