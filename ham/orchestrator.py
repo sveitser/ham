@@ -13,7 +13,7 @@ from ham.actions import (
     SwitchWorkspace,
 )
 from ham.git import worktree_path
-from ham.hyprland import HyprlandWindow, windows_in_path
+from ham.hyprland import windows_in_path
 
 if TYPE_CHECKING:
     from ham.backend import Backend
@@ -83,9 +83,8 @@ def plan_open_repo(repo: Path, *, workspace_id: str, backend: Backend) -> list[A
     )
 
 
-def plan_close(repo: Path, branch: str, windows: list[HyprlandWindow]) -> list[Action]:
-    wt_path = worktree_path(repo, branch)
-    matching = windows_in_path(windows, wt_path)
+def plan_close(path: Path, windows: list) -> list[Action]:
+    matching = windows_in_path(windows, path)
     return [CloseWindow(window_id=w.window_id) for w in matching]
 
 
@@ -96,14 +95,14 @@ def plan_delete(
     worktree_exists: bool,
     dirty: bool,
     status: str,
-    windows: list[HyprlandWindow],
+    windows: list,
 ) -> list[Action]:
     wt_path = worktree_path(repo, branch)
 
     if not worktree_exists:
         raise ValueError(f"worktree does not exist: {wt_path}")
 
-    actions: list[Action] = plan_close(repo, branch, windows)
+    actions: list[Action] = plan_close(wt_path, windows)
 
     if dirty:
         actions.append(PromptConfirmation(message=status))

@@ -237,29 +237,38 @@ def main() -> None:
 
     if args.command in ("close", "delete"):
         if args.target and args.target.startswith("repo: "):
-            print(f"cannot {args.command} a repo entry", file=sys.stderr)
-            raise SystemExit(1)
-        if args.target:
-            args.target = args.target.removeprefix("wt: ")
-        if args.target and args.branch_name:
-            repo = Path(args.target).resolve()
-            branch = args.branch_name
-            log.debug("explicit args: repo=%s branch=%s", repo, branch)
-        elif args.target:
-            resolved = git.resolve_worktree(args.target)
-            if resolved is None:
-                print(f"worktree not found: {args.target}", file=sys.stderr)
+            if args.command == "delete":
+                print("cannot delete a repo entry", file=sys.stderr)
                 raise SystemExit(1)
-            repo, branch = resolved
-            log.debug("resolved from target: repo=%s branch=%s", repo, branch)
+            name = args.target[len("repo: ") :]
+            try:
+                repo = git.resolve_repo(name)
+            except ValueError as e:
+                print(str(e), file=sys.stderr)
+                raise SystemExit(1)
+            branch = None
         else:
-            resolved = git.resolve_from_cwd()
-            if resolved is None:
-                print("not in a ham worktree and no args given", file=sys.stderr)
-                raise SystemExit(1)
-            repo, branch = resolved
-            log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
-        wt_path = worktree_path(repo, branch)
+            if args.target:
+                args.target = args.target.removeprefix("wt: ")
+            if args.target and args.branch_name:
+                repo = Path(args.target).resolve()
+                branch = args.branch_name
+                log.debug("explicit args: repo=%s branch=%s", repo, branch)
+            elif args.target:
+                resolved = git.resolve_worktree(args.target)
+                if resolved is None:
+                    print(f"worktree not found: {args.target}", file=sys.stderr)
+                    raise SystemExit(1)
+                repo, branch = resolved
+                log.debug("resolved from target: repo=%s branch=%s", repo, branch)
+            else:
+                resolved = git.resolve_from_cwd()
+                if resolved is None:
+                    print("not in a ham worktree and no args given", file=sys.stderr)
+                    raise SystemExit(1)
+                repo, branch = resolved
+                log.debug("resolved from cwd: repo=%s branch=%s", repo, branch)
+        wt_path = worktree_path(repo, branch) if branch is not None else repo
     else:
         # Resolve target to (repo, branch)
         if args.target is None:
@@ -298,7 +307,7 @@ def main() -> None:
             actions = _switch_actions(repo, branch, backend)
         case "close":
             windows = backend.get_windows()
-            actions = plan_close(repo, branch, windows)
+            actions = plan_close(wt_path, windows)
         case "delete":
             dirty, status = git.is_dirty(wt_path)
             windows = backend.get_windows()

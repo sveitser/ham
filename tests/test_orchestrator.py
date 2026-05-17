@@ -127,12 +127,13 @@ def test_close_match_windows_ok() -> None:
             cwds=[wt_path / "sub"],
         ),
     ]
-    actions = plan_close(REPO, "feat", windows)
+    actions = plan_close(wt_path, windows)
     assert len(actions) == 2
     assert all(isinstance(a, CloseWindow) for a in actions)
 
 
 def test_close_skip_unrelated_ok() -> None:
+    wt_path = worktree_path(REPO, "feat")
     windows = [
         HyprlandWindow(
             window_id="0x1",
@@ -142,7 +143,7 @@ def test_close_skip_unrelated_ok() -> None:
             cwds=[Path("/tmp/other")],
         ),
     ]
-    actions = plan_close(REPO, "feat", windows)
+    actions = plan_close(wt_path, windows)
     assert len(actions) == 0
 
 
@@ -158,9 +159,27 @@ def test_close_matches_descendant_cwd() -> None:
             cwds=[Path("/home/user"), wt_path],
         ),
     ]
-    actions = plan_close(REPO, "feat", windows)
+    actions = plan_close(wt_path, windows)
     assert len(actions) == 1
     assert isinstance(actions[0], CloseWindow)
+
+
+def test_close_repo_path_ok() -> None:
+    windows = [
+        HyprlandWindow(
+            window_id="0x1", pid=1, class_name="alacritty", title="t", cwds=[REPO]
+        ),
+        HyprlandWindow(
+            window_id="0x2",
+            pid=2,
+            class_name="emacs",
+            title="t",
+            cwds=[REPO / "src"],
+        ),
+    ]
+    actions = plan_close(REPO, windows)
+    assert len(actions) == 2
+    assert all(isinstance(a, CloseWindow) for a in actions)
 
 
 def test_delete_clean_remove_ok() -> None:
@@ -276,7 +295,7 @@ def test_open_local_branch_wins_over_remote() -> None:
 
 
 def test_close_no_windows_ok() -> None:
-    actions = plan_close(REPO, "feat", [])
+    actions = plan_close(worktree_path(REPO, "feat"), [])
     assert actions == []
 
 

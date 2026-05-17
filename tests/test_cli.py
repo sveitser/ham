@@ -783,14 +783,20 @@ def test_delete_repo_prefix_errors(
     assert "cannot delete a repo entry" in capsys.readouterr().err
 
 
-def test_close_repo_prefix_errors(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_close_repo_prefix_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "close", "repo: myrepo"])
-    with patch("ham.cli.git"):
-        with pytest.raises(SystemExit):
-            main()
-    assert "cannot close a repo entry" in capsys.readouterr().err
+    backend = _mock_backend()
+    repo_path = Path("/r/myrepo")
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.plan_close", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.resolve_repo.return_value = repo_path
+        main()
+    mock_git.resolve_repo.assert_called_once_with("myrepo")
+    mock_plan.assert_called_once_with(repo_path, backend.get_windows())
 
 
 def test_close_strips_wt_prefix(monkeypatch: pytest.MonkeyPatch) -> None:
