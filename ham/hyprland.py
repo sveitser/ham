@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class HyprlandWindow:
-    address: str
+    window_id: str
     pid: int
     class_name: str
     title: str
@@ -44,7 +44,7 @@ def get_windows() -> list[HyprlandWindow]:  # pragma: no cover
     clients = json.loads(result.stdout)
     return [
         HyprlandWindow(
-            address=client["address"],
+            window_id=client["address"],
             pid=client["pid"],
             class_name=client["class"],
             title=client["title"],
@@ -55,14 +55,14 @@ def get_windows() -> list[HyprlandWindow]:  # pragma: no cover
     ]
 
 
-def get_workspace_for_windows(windows: list[HyprlandWindow]) -> int | None:
+def get_workspace_for_windows(windows: list[HyprlandWindow]) -> str | None:
     """Given matched windows, return their workspace ID."""
     if not windows:
         return None
-    return windows[0].workspace_id
+    return str(windows[0].workspace_id)
 
 
-def find_free_workspace() -> int:  # pragma: no cover
+def find_free_workspace() -> str:  # pragma: no cover
     """Return lowest unused workspace ID >= 1."""
     result = subprocess.run(
         ["hyprctl", "workspaces", "-j"],
@@ -75,10 +75,10 @@ def find_free_workspace() -> int:  # pragma: no cover
     workspace_id = 1
     while workspace_id in used:
         workspace_id += 1
-    return workspace_id
+    return str(workspace_id)
 
 
-def get_active_workspace() -> tuple[int, int]:  # pragma: no cover
+def get_active_workspace() -> tuple[str, int]:  # pragma: no cover
     """Return (id, window_count) for the currently focused workspace."""
     result = subprocess.run(
         ["hyprctl", "activeworkspace", "-j"],
@@ -87,7 +87,7 @@ def get_active_workspace() -> tuple[int, int]:  # pragma: no cover
         check=True,
     )
     ws = json.loads(result.stdout)
-    return ws["id"], ws["windows"]
+    return str(ws["id"]), ws["windows"]
 
 
 def _ancestor_pids() -> dict[int, int]:  # pragma: no cover
@@ -116,19 +116,19 @@ def windows_in_path(
     deferred = []
     for w in windows:
         if any(cwd.is_relative_to(resolved) for cwd in w.cwds):
-            log.debug("match: %s %s pid=%d", w.address, w.class_name, w.pid)
+            log.debug("match: %s %s pid=%d", w.window_id, w.class_name, w.pid)
             if own_last and w.pid in ancestors:
                 log.debug(
                     "ancestor window (dist=%d), deferring: %s",
                     ancestors[w.pid],
-                    w.address,
+                    w.window_id,
                 )
                 deferred.append(w)
             else:
                 matched.append(w)
         else:
             log.debug(
-                "skip: %s %s pid=%d cwds=%s", w.address, w.class_name, w.pid, w.cwds
+                "skip: %s %s pid=%d cwds=%s", w.window_id, w.class_name, w.pid, w.cwds
             )
     deferred.sort(key=lambda w: ancestors.get(w.pid, 0), reverse=True)
     matched.extend(deferred)

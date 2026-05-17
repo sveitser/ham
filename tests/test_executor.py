@@ -1,6 +1,6 @@
 from pathlib import Path
 from subprocess import CompletedProcess
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -159,7 +159,7 @@ def test_launch_process_path_with_spaces() -> None:
 
 
 def test_close_window() -> None:
-    action = CloseWindow(address="0xdead")
+    action = CloseWindow(window_id="0xdead")
     with patch("ham.executor.subprocess.run") as mock_run:
         execute([action])
     mock_run.assert_called_once_with(
@@ -180,7 +180,7 @@ def test_prompt_confirmation_no(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_switch_workspace() -> None:
-    action = SwitchWorkspace(workspace_id=3)
+    action = SwitchWorkspace(workspace_id="3")
     with patch("ham.executor.subprocess.run") as mock_run:
         execute([action])
     mock_run.assert_called_once_with(
@@ -195,3 +195,59 @@ def test_unknown_action_raises() -> None:
 
     with pytest.raises(TypeError, match="unknown action"):
         execute([FakeAction()])
+
+
+def test_launch_process_tmux_creates_session() -> None:
+    with patch("ham.executor.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=1)
+        execute(
+            [
+                LaunchProcess(
+                    cmd=["bash"], workspace_id="myrepo-feat", cwd=Path("/tmp/wt")
+                )
+            ],
+            "tmux",
+        )
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert any("new-session" in str(c) for c in calls)
+
+
+def test_launch_process_tmux_adds_window() -> None:
+    with patch("ham.executor.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        execute(
+            [
+                LaunchProcess(
+                    cmd=["bash"], workspace_id="myrepo-feat", cwd=Path("/tmp/wt")
+                )
+            ],
+            "tmux",
+        )
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    assert any("new-window" in str(c) for c in calls)
+
+
+def test_close_window_tmux() -> None:
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([CloseWindow(window_id="myrepo-feat:0")], "tmux")
+    mock_run.assert_called_once_with(
+        ["tmux", "kill-window", "-t", "myrepo-feat:0"], check=True
+    )
+
+
+def test_switch_workspace_tmux_inside(monkeypatch) -> None:
+    monkeypatch.setenv("TMUX", "/tmp/tmux-1000/default,123,0")
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([SwitchWorkspace(workspace_id="myrepo-feat")], "tmux")
+    mock_run.assert_called_once_with(
+        ["tmux", "switch-client", "-t", "myrepo-feat"], check=True
+    )
+
+
+def test_switch_workspace_tmux_outside(monkeypatch) -> None:
+    monkeypatch.delenv("TMUX", raising=False)
+    with patch("ham.executor.subprocess.run") as mock_run:
+        execute([SwitchWorkspace(workspace_id="myrepo-feat")], "tmux")
+    mock_run.assert_called_once_with(
+        ["tmux", "attach-session", "-t", "myrepo-feat"], check=True
+    )

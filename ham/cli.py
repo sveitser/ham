@@ -5,15 +5,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ham import git, hyprland
+from ham import git
+from ham.backend import detect_backend
 from ham.executor import execute
 from ham.git import DATA_DIR, WorktreeStatus, worktree_path
-from ham.hyprland import (
-    find_free_workspace,
-    get_active_workspace,
-    get_workspace_for_windows,
-    windows_in_path,
-)
 from ham.actions import Action
 from ham.orchestrator import plan_close, plan_delete, plan_switch, plan_switch_repo
 
@@ -120,45 +115,53 @@ def _pick_branch(repo: Path) -> str:
     raise SystemExit(1)
 
 
-def _target_workspace() -> int:
+def _target_workspace(backend, hint: str = "") -> str:
     """Reuse current workspace if it has <= 1 window, else pick a free one."""
-    active_id, window_count = get_active_workspace()
-    if window_count <= 1:
-        return active_id
-    return find_free_workspace()
+    if backend.name == "tmux":
+        return backend.find_free_workspace(hint)
+    active_id, count = backend.get_active_workspace()
+    return active_id if count <= 1 else backend.find_free_workspace()
 
 
-def _switch_actions(repo: Path, branch: str) -> list[Action]:
+def _switch_actions(repo: Path, branch: str, backend) -> list[Action]:
     """Build plan_switch actions for a repo/branch."""
     wt_path = worktree_path(repo, branch)
-    windows = hyprland.get_windows()
-    matched = windows_in_path(windows, wt_path, own_last=False)
-    workspace_id = get_workspace_for_windows(matched)
+    windows = backend.get_windows()
+    matched = backend.windows_in_path(windows, wt_path, own_last=False)
+    workspace_id = backend.get_workspace_for_windows(matched)
     is_repo = git.is_git_repo(repo)
     wt_exists = git.worktree_exists(repo, wt_path)
     if is_repo and not wt_exists:
         git.fetch_origin(repo)
+    hint = f"{repo.name}-{git.sanitize_branch(branch)}"
     return plan_switch(
         repo,
         branch,
         workspace_id=workspace_id,
-        free_workspace=_target_workspace() if workspace_id is None else 0,
+        free_workspace=_target_workspace(backend, hint)
+        if workspace_id is None
+        else "0",
         is_git_repo=is_repo,
         worktree_exists=wt_exists,
         branch_exists=git.branch_exists(repo, branch),
         remote_branch_exists=git.remote_branch_exists(repo, branch),
+        backend_type=backend.name,
     )
 
 
-def _switch_repo_actions(repo: Path) -> list[Action]:
+def _switch_repo_actions(repo: Path, backend) -> list[Action]:
     """Build plan_switch_repo actions for a bare repo path (no worktree)."""
-    windows = hyprland.get_windows()
-    matched = windows_in_path(windows, repo, own_last=False)
-    workspace_id = get_workspace_for_windows(matched)
+    windows = backend.get_windows()
+    matched = backend.windows_in_path(windows, repo, own_last=False)
+    workspace_id = backend.get_workspace_for_windows(matched)
+    hint = repo.name
     return plan_switch_repo(
         repo,
         workspace_id=workspace_id,
-        free_workspace=_target_workspace() if workspace_id is None else 0,
+        free_workspace=_target_workspace(backend, hint)
+        if workspace_id is None
+        else "0",
+        backend_type=backend.name,
     )
 
 
@@ -212,6 +215,8 @@ def main() -> None:
     fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
     logging.getLogger().addHandler(fh)
 
+    backend = detect_backend()
+
     if args.command == "list":
         for repo_name, branch in git.list_worktrees():
             print(f"{repo_name}/{branch}")
@@ -225,9 +230,9 @@ def main() -> None:
     if args.command in (None, "switch", "rofi"):
         repo, branch = _get_selection(args)
         if branch is None:
-            execute(_switch_repo_actions(repo))
+            execute(_switch_repo_actions(repo, backend), backend.name)
         else:
-            execute(_switch_actions(repo, branch))
+            execute(_switch_actions(repo, branch, backend), backend.name)
         return
 
     if args.command in ("close", "delete"):
@@ -290,13 +295,13 @@ def main() -> None:
 
     match args.command:
         case "open":
-            actions = _switch_actions(repo, branch)
+            actions = _switch_actions(repo, branch, backend)
         case "close":
-            windows = hyprland.get_windows()
+            windows = backend.get_windows()
             actions = plan_close(repo, branch, windows)
         case "delete":
             dirty, status = git.is_dirty(wt_path)
-            windows = hyprland.get_windows()
+            windows = backend.get_windows()
             actions = plan_delete(
                 repo,
                 branch,
@@ -308,7 +313,7 @@ def main() -> None:
         case _:
             raise AssertionError(f"unhandled command: {args.command}")
 
-    execute(actions)
+    execute(actions, backend.name)
 
 
 if __name__ == "__main__":

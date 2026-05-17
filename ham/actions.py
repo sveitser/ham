@@ -31,12 +31,13 @@ class SetupDirenv(Action):
 @dataclass
 class LaunchProcess(Action):
     cmd: list[str]
-    workspace_id: int
+    workspace_id: str
+    cwd: Path | None = None
 
 
 @dataclass
 class CloseWindow(Action):
-    address: str
+    window_id: str
 
 
 @dataclass
@@ -46,4 +47,4 @@ class PromptConfirmation(Action):
 
 @dataclass
 class SwitchWorkspace(Action):
-    workspace_id: int
+    workspace_id: str

@@ -56,3 +56,21 @@ def test_classify_porcelain_untracked_only():
 
 def test_classify_porcelain_both():
     assert classify_porcelain(" M src/foo.py\n?? tmp/\nA  new.py") == (True, True)
+
+
+def test_classify_porcelain_empty_lines():
+    assert classify_porcelain(" M src/foo.py\n\n?? tmp/") == (True, True)
+
+
+def test_discover_repos_skips_files_in_org(tmp_path):
+    (tmp_path / "org" / "repo" / ".git").mkdir(parents=True)
+    (tmp_path / "org" / "file.txt").write_text("not a dir")
+    result = discover_repos(tmp_path)
+    assert result == [tmp_path / "org" / "repo"]
+
+
+def test_discover_repos_skips_file_orgs(tmp_path):
+    (tmp_path / "notanorg.txt").write_text("not a dir")
+    (tmp_path / "org" / "repo" / ".git").mkdir(parents=True)
+    result = discover_repos(tmp_path)
+    assert result == [tmp_path / "org" / "repo"]

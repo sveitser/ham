@@ -136,10 +136,10 @@ def test_close_match_windows_ok() -> None:
     wt_path = worktree_path(REPO, "feat")
     windows = [
         HyprlandWindow(
-            address="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
+            window_id="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
         ),
         HyprlandWindow(
-            address="0x2",
+            window_id="0x2",
             pid=2,
             class_name="alacritty",
             title="t",
@@ -154,7 +154,7 @@ def test_close_match_windows_ok() -> None:
 def test_close_skip_unrelated_ok() -> None:
     windows = [
         HyprlandWindow(
-            address="0x1",
+            window_id="0x1",
             pid=1,
             class_name="alacritty",
             title="t",
@@ -170,7 +170,7 @@ def test_close_matches_descendant_cwd() -> None:
     wt_path = worktree_path(REPO, "feat")
     windows = [
         HyprlandWindow(
-            address="0x1",
+            window_id="0x1",
             pid=1,
             class_name="alacritty",
             title="t",
@@ -212,7 +212,7 @@ def test_delete_closes_windows() -> None:
     wt_path = worktree_path(REPO, "with-windows")
     windows = [
         HyprlandWindow(
-            address="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
+            window_id="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
         ),
     ]
     actions = plan_delete(
@@ -347,14 +347,18 @@ def test_close_own_window_last() -> None:
     other_pid = 200
     windows = [
         HyprlandWindow(
-            address="0x1",
+            window_id="0x1",
             pid=own_pid,
             class_name="alacritty",
             title="t",
             cwds=[wt_path],
         ),
         HyprlandWindow(
-            address="0x2", pid=other_pid, class_name="emacs", title="t", cwds=[wt_path]
+            window_id="0x2",
+            pid=other_pid,
+            class_name="emacs",
+            title="t",
+            cwds=[wt_path],
         ),
     ]
     with patch("ham.hyprland._ancestor_pids", return_value={own_pid: 2}):
@@ -372,17 +376,21 @@ def test_close_ancestors_ordered_by_distance() -> None:
     other_pid = 200  # emacs
     windows = [
         HyprlandWindow(
-            address="0x1",
+            window_id="0x1",
             pid=distant_pid,
             class_name="alacritty",
             title="claude",
             cwds=[wt_path],
         ),
         HyprlandWindow(
-            address="0x2", pid=other_pid, class_name="emacs", title="t", cwds=[wt_path]
+            window_id="0x2",
+            pid=other_pid,
+            class_name="emacs",
+            title="t",
+            cwds=[wt_path],
         ),
         HyprlandWindow(
-            address="0x3",
+            window_id="0x3",
             pid=close_pid,
             class_name="alacritty",
             title="scratch",
@@ -437,13 +445,13 @@ def test_get_workspace_for_windows_empty() -> None:
 def test_get_workspace_for_windows_returns_first() -> None:
     windows = [
         HyprlandWindow(
-            address="0x1", pid=1, class_name="alacritty", title="t", workspace_id=3
+            window_id="0x1", pid=1, class_name="alacritty", title="t", workspace_id=3
         ),
         HyprlandWindow(
-            address="0x2", pid=2, class_name="emacs", title="t", workspace_id=5
+            window_id="0x2", pid=2, class_name="emacs", title="t", workspace_id=5
         ),
     ]
-    assert get_workspace_for_windows(windows) == 3
+    assert get_workspace_for_windows(windows) == "3"
 
 
 def test_launch_workspace_pin_ok() -> None:
@@ -577,3 +585,66 @@ def test_switch_repo_open_new() -> None:
     assert actions[-1].workspace_id == 5
     assert any(isinstance(a, LaunchProcess) for a in actions)
     assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
+
+
+def test_launch_actions_tmux_cmds() -> None:
+    wt_path = worktree_path(REPO, "feat")
+    actions = plan_open(
+        REPO,
+        "feat",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        workspace_id="myrepo-feat",
+        backend_type="tmux",
+    )
+    launches = [a for a in actions if isinstance(a, LaunchProcess)]
+    assert len(launches) == 2
+    assert launches[0].cmd == ["bash"]
+    assert "claude" in " ".join(launches[1].cmd)
+    assert not any("alacritty" in " ".join(la.cmd) for la in launches)
+    assert all(la.cwd == wt_path for la in launches)
+
+
+def test_launch_actions_tmux_claude_continue() -> None:
+    actions = plan_open(
+        REPO,
+        "feat",
+        is_git_repo=True,
+        worktree_exists=True,
+        branch_exists=True,
+        workspace_id="myrepo-feat",
+        backend_type="tmux",
+    )
+    launches = [a for a in actions if isinstance(a, LaunchProcess)]
+    claude_launch = next(la for la in launches if "claude" in " ".join(la.cmd))
+    assert "--continue" in claude_launch.cmd
+
+
+def test_switch_tmux_focus_existing() -> None:
+    actions = plan_switch(
+        REPO,
+        "feat",
+        workspace_id="myrepo-feat",
+        free_workspace="myrepo-feat",
+        is_git_repo=True,
+        worktree_exists=True,
+        branch_exists=True,
+        backend_type="tmux",
+    )
+    assert actions == [SwitchWorkspace(workspace_id="myrepo-feat")]
+
+
+def test_switch_tmux_open_new() -> None:
+    actions = plan_switch(
+        REPO,
+        "feat",
+        workspace_id=None,
+        free_workspace="myrepo-feat",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        backend_type="tmux",
+    )
+    assert any(isinstance(a, LaunchProcess) for a in actions)
+    assert actions[-1] == SwitchWorkspace(workspace_id="myrepo-feat")

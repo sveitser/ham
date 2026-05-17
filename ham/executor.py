@@ -1,4 +1,5 @@
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -18,14 +19,14 @@ from ham.actions import (
 log = logging.getLogger(__name__)
 
 
-def execute(actions: list[Action]) -> None:
+def execute(actions: list[Action], backend: str = "hyprland") -> None:
     log.info("%d actions to execute", len(actions))
     for action in actions:
         log.debug("executing %s", action)
-        _execute_one(action)
+        _execute_one(action, backend)
 
 
-def _execute_one(action: Action) -> None:
+def _execute_one(action: Action, backend: str = "hyprland") -> None:
     match action:
         case GitWorktreeAdd(repo, worktree_path, branch, create_branch, start_point):
             cmd = ["git", "-C", str(repo), "worktree", "add"]
@@ -64,30 +65,74 @@ def _execute_one(action: Action) -> None:
                     "direnv allow failed (rc=%d), continuing", result.returncode
                 )
 
-        case LaunchProcess(cmd, workspace_id):
-            shell_cmd = " ".join(shlex.quote(c) for c in cmd)
-            subprocess.run(
-                [
-                    "hyprctl",
-                    "dispatch",
-                    "exec",
-                    f"[workspace {workspace_id} silent]",
-                    shell_cmd,
-                ],
-                check=True,
-            )
+        case LaunchProcess(cmd, workspace_id, cwd):
+            if backend == "tmux":
+                has = (
+                    subprocess.run(
+                        ["tmux", "has-session", "-t", workspace_id],
+                        capture_output=True,
+                    ).returncode
+                    == 0
+                )
+                if has:
+                    tmux_cmd = [
+                        "tmux",
+                        "new-window",
+                        "-t",
+                        workspace_id,
+                        "-c",
+                        str(cwd),
+                        "--",
+                    ] + cmd
+                else:
+                    tmux_cmd = [
+                        "tmux",
+                        "new-session",
+                        "-d",
+                        "-s",
+                        workspace_id,
+                        "-c",
+                        str(cwd),
+                        "--",
+                    ] + cmd
+                subprocess.run(tmux_cmd, check=True)
+            else:
+                shell_cmd = " ".join(shlex.quote(c) for c in cmd)
+                subprocess.run(
+                    [
+                        "hyprctl",
+                        "dispatch",
+                        "exec",
+                        f"[workspace {workspace_id} silent]",
+                        shell_cmd,
+                    ],
+                    check=True,
+                )
 
-        case CloseWindow(address):
-            subprocess.run(
-                ["hyprctl", "dispatch", "closewindow", f"address:{address}"],
-                check=True,
-            )
+        case CloseWindow(window_id):
+            if backend == "tmux":
+                subprocess.run(["tmux", "kill-window", "-t", window_id], check=True)
+            else:
+                subprocess.run(
+                    ["hyprctl", "dispatch", "closewindow", f"address:{window_id}"],
+                    check=True,
+                )
 
         case SwitchWorkspace(workspace_id):
-            subprocess.run(
-                ["hyprctl", "dispatch", "workspace", str(workspace_id)],
-                check=True,
-            )
+            if backend == "tmux":
+                if os.environ.get("TMUX"):
+                    subprocess.run(
+                        ["tmux", "switch-client", "-t", workspace_id], check=True
+                    )
+                else:
+                    subprocess.run(
+                        ["tmux", "attach-session", "-t", workspace_id], check=True
+                    )
+            else:
+                subprocess.run(
+                    ["hyprctl", "dispatch", "workspace", workspace_id],
+                    check=True,
+                )
 
         case PromptConfirmation(message):
             print(message)
