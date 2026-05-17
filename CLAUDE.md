@@ -1,6 +1,6 @@
 # ham - Hyprland Agent Manager
 
-Workspace management tool for hyprland + Claude Code.
+Workspace management tool for hyprland + Claude Code. Also works headless via tmux.
 
 ## Commands
 - `nix develop` - enter dev shell
@@ -16,7 +16,7 @@ Workspace management tool for hyprland + Claude Code.
 - `ham open` - interactive fzf: pick repo from REPO_DIR, then pick/type branch
 - `ham open repo_name/branch` - resolve existing worktree or discover repo in REPO_DIR
 - `ham open /path/to/repo branch` - explicit repo path + branch
-- When spawning new windows, reuses the active workspace if it has ≤1 window, else picks the lowest free one
+- When spawning new windows, reuses the active workspace if it has ≤1 window, else picks the lowest free one (Hyprland only)
 - `ham list` - list active worktrees as repo_name/branch
 - `ham switch [query]` - same as `ham`; with query it directly resolves and switches
 - `ham rofi` - same picker via rofi (no ctrl-d binding)
@@ -26,11 +26,18 @@ Workspace management tool for hyprland + Claude Code.
 ## Environment
 - `HAM_REPO_DIR` - repo discovery root (default: `~/r`), scanned 2 levels deep (org/repo)
 
+## Backend
+Backend is auto-detected:
+- **Hyprland**: `$HYPRLAND_INSTANCE_SIGNATURE` set → uses `hyprctl`, opens Alacritty + Emacs + Claude windows in a numeric workspace
+- **tmux**: fallback → creates a named session (`repo-branch`) with 3 panes: emacs -nw (left), claude (top-right), shell (bottom-right)
+
 ## Architecture
 - Action/Effect pattern: orchestrator produces `list[Action]`, executor runs them
 - Tests assert on action lists, no mocking needed
 - `ham/orchestrator.py` - business logic (plan_open, plan_close, plan_delete, plan_switch)
 - `ham/actions.py` - action dataclasses
 - `ham/executor.py` - runs actions
+- `ham/backend.py` - backend protocol + Hyprland/tmux implementations (layout_actions, get_windows, etc.)
 - `ham/hyprland.py` - hyprctl queries
+- `ham/tmux.py` - tmux queries
 - `ham/git.py` - git worktree ops + repo discovery
