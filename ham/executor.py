@@ -13,6 +13,7 @@ from ham.actions import (
     PromptConfirmation,
     SetupDirenv,
     SwitchWorkspace,
+    TmuxLayout,
 )
 
 
@@ -65,49 +66,85 @@ def _execute_one(action: Action, backend: str = "hyprland") -> None:
                     "direnv allow failed (rc=%d), continuing", result.returncode
                 )
 
-        case LaunchProcess(cmd, workspace_id, cwd):
-            if backend == "tmux":
-                has = (
-                    subprocess.run(
-                        ["tmux", "has-session", "-t", workspace_id],
-                        capture_output=True,
-                    ).returncode
-                    == 0
-                )
-                if has:
-                    tmux_cmd = [
-                        "tmux",
-                        "new-window",
-                        "-t",
-                        workspace_id,
-                        "-c",
-                        str(cwd),
-                        "--",
-                    ] + cmd
-                else:
-                    tmux_cmd = [
-                        "tmux",
-                        "new-session",
-                        "-d",
-                        "-s",
-                        workspace_id,
-                        "-c",
-                        str(cwd),
-                        "--",
-                    ] + cmd
-                subprocess.run(tmux_cmd, check=True)
-            else:
-                shell_cmd = " ".join(shlex.quote(c) for c in cmd)
+        case LaunchProcess(cmd, workspace_id, _):
+            shell_cmd = " ".join(shlex.quote(c) for c in cmd)
+            subprocess.run(
+                [
+                    "hyprctl",
+                    "dispatch",
+                    "exec",
+                    f"[workspace {workspace_id} silent]",
+                    shell_cmd,
+                ],
+                check=True,
+            )
+
+        case TmuxLayout(session_name, cwd, emacs_cmd, claude_cmd):
+            has = (
                 subprocess.run(
-                    [
-                        "hyprctl",
-                        "dispatch",
-                        "exec",
-                        f"[workspace {workspace_id} silent]",
-                        shell_cmd,
-                    ],
+                    ["tmux", "has-session", "-t", session_name], capture_output=True
+                ).returncode
+                == 0
+            )
+            if not has:
+                subprocess.run(
+                    ["tmux", "new-session", "-d", "-s", session_name, "-c", str(cwd)],
                     check=True,
                 )
+            else:
+                subprocess.run(
+                    ["tmux", "new-window", "-d", "-t", session_name, "-c", str(cwd)],
+                    check=True,
+                )
+            subprocess.run(
+                [
+                    "tmux",
+                    "split-window",
+                    "-h",
+                    "-t",
+                    f"{session_name}:0.0",
+                    "-c",
+                    str(cwd),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "tmux",
+                    "split-window",
+                    "-v",
+                    "-t",
+                    f"{session_name}:0.1",
+                    "-c",
+                    str(cwd),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "tmux",
+                    "send-keys",
+                    "-t",
+                    f"{session_name}:0.0",
+                    shlex.join(emacs_cmd),
+                    "Enter",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "tmux",
+                    "send-keys",
+                    "-t",
+                    f"{session_name}:0.1",
+                    shlex.join(claude_cmd),
+                    "Enter",
+                ],
+                check=True,
+            )
+            subprocess.run(
+                ["tmux", "select-pane", "-t", f"{session_name}:0.2"], check=True
+            )
 
         case CloseWindow(window_id):
             if backend == "tmux":

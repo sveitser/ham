@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Protocol
 
 from ham import hyprland, tmux
+from ham.actions import LaunchProcess, TmuxLayout
 from ham.hyprland import HyprlandWindow
 from ham.tmux import TmuxWindow
 
@@ -16,6 +17,9 @@ class Backend(Protocol):
     def get_active_workspace(self) -> tuple[str, int]: ...
     def windows_in_path(
         self, windows: list, path: Path, own_last: bool = True
+    ) -> list: ...
+    def layout_actions(
+        self, cwd: Path, workspace_id: str, claude_continue: bool
     ) -> list: ...
 
 
@@ -39,6 +43,26 @@ class HyprlandBackend:
     ) -> list[HyprlandWindow]:
         return hyprland.windows_in_path(windows, path, own_last)
 
+    def layout_actions(
+        self, cwd: Path, workspace_id: str, claude_continue: bool
+    ) -> list[LaunchProcess]:
+        direnv = ["direnv", "exec", str(cwd)]
+        claude_cmd = direnv + ["claude"] + (["--continue"] if claude_continue else [])
+        return [
+            LaunchProcess(
+                cmd=["alacritty", "--working-directory", str(cwd)],
+                workspace_id=workspace_id,
+            ),
+            LaunchProcess(
+                cmd=direnv + ["emacs", str(cwd / "README.md")],
+                workspace_id=workspace_id,
+            ),
+            LaunchProcess(
+                cmd=["alacritty", "--working-directory", str(cwd), "-e"] + claude_cmd,
+                workspace_id=workspace_id,
+            ),
+        ]
+
 
 class TmuxBackend:
     name = "tmux"
@@ -59,6 +83,21 @@ class TmuxBackend:
         self, windows: list[TmuxWindow], path: Path, own_last: bool = True
     ) -> list[TmuxWindow]:
         return tmux.windows_in_path(windows, path)
+
+    def layout_actions(
+        self, cwd: Path, workspace_id: str, claude_continue: bool
+    ) -> list[TmuxLayout]:
+        direnv = ["direnv", "exec", str(cwd)]
+        emacs_cmd = direnv + ["emacs", str(cwd)]
+        claude_cmd = direnv + ["claude"] + (["--continue"] if claude_continue else [])
+        return [
+            TmuxLayout(
+                session_name=workspace_id,
+                cwd=cwd,
+                emacs_cmd=emacs_cmd,
+                claude_cmd=claude_cmd,
+            )
+        ]
 
 
 def detect_backend() -> HyprlandBackend | TmuxBackend:

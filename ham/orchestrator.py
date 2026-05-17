@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from ham.actions import (
     Action,
     CloseWindow,
     GitWorktreeAdd,
     GitWorktreeRemove,
-    LaunchProcess,
     PromptConfirmation,
     SetupDirenv,
     SwitchWorkspace,
@@ -13,38 +15,20 @@ from ham.actions import (
 from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow, windows_in_path
 
+if TYPE_CHECKING:
+    from ham.backend import Backend
+
 
 def _launch_actions(
     cwd: Path,
     *,
     claude_continue: bool,
     workspace_id: str,
-    backend_type: str = "hyprland",
+    backend: Backend,
 ) -> list[Action]:
-    direnv = ["direnv", "exec", str(cwd)]
-    claude_cmd = direnv + ["claude"]
-    if claude_continue:
-        claude_cmd.append("--continue")
-    if backend_type == "tmux":
-        return [
-            SetupDirenv(cwd=cwd),
-            LaunchProcess(cmd=["bash"], workspace_id=workspace_id, cwd=cwd),
-            LaunchProcess(cmd=claude_cmd, workspace_id=workspace_id, cwd=cwd),
-        ]
     return [
         SetupDirenv(cwd=cwd),
-        LaunchProcess(
-            cmd=["alacritty", "--working-directory", str(cwd)],
-            workspace_id=workspace_id,
-        ),
-        LaunchProcess(
-            cmd=direnv + ["emacs", str(cwd / "README.md")],
-            workspace_id=workspace_id,
-        ),
-        LaunchProcess(
-            cmd=["alacritty", "--working-directory", str(cwd), "-e"] + claude_cmd,
-            workspace_id=workspace_id,
-        ),
+        *backend.layout_actions(cwd, workspace_id, claude_continue),
     ]
 
 
@@ -57,7 +41,7 @@ def plan_open(
     branch_exists: bool,
     remote_branch_exists: bool = False,
     workspace_id: str,
-    backend_type: str = "hyprland",
+    backend: Backend,
 ) -> list[Action]:
     if not is_git_repo:
         raise ValueError(f"not a git repository: {repo}")
@@ -87,17 +71,15 @@ def plan_open(
             wt_path,
             claude_continue=worktree_exists,
             workspace_id=workspace_id,
-            backend_type=backend_type,
+            backend=backend,
         )
     )
     return actions
 
 
-def plan_open_repo(
-    repo: Path, *, workspace_id: str, backend_type: str = "hyprland"
-) -> list[Action]:
+def plan_open_repo(repo: Path, *, workspace_id: str, backend: Backend) -> list[Action]:
     return _launch_actions(
-        repo, claude_continue=True, workspace_id=workspace_id, backend_type=backend_type
+        repo, claude_continue=True, workspace_id=workspace_id, backend=backend
     )
 
 
@@ -140,7 +122,7 @@ def plan_switch(
     worktree_exists: bool,
     branch_exists: bool,
     remote_branch_exists: bool = False,
-    backend_type: str = "hyprland",
+    backend: Backend,
 ) -> list[Action]:
     if workspace_id is not None:
         return [SwitchWorkspace(workspace_id=workspace_id)]
@@ -152,7 +134,7 @@ def plan_switch(
         branch_exists=branch_exists,
         remote_branch_exists=remote_branch_exists,
         workspace_id=free_workspace,
-        backend_type=backend_type,
+        backend=backend,
     ) + [SwitchWorkspace(workspace_id=free_workspace)]
 
 
@@ -161,10 +143,10 @@ def plan_switch_repo(
     *,
     workspace_id: str | None,
     free_workspace: str,
-    backend_type: str = "hyprland",
+    backend: Backend,
 ) -> list[Action]:
     if workspace_id is not None:
         return [SwitchWorkspace(workspace_id=workspace_id)]
-    return plan_open_repo(
-        repo, workspace_id=free_workspace, backend_type=backend_type
-    ) + [SwitchWorkspace(workspace_id=free_workspace)]
+    return plan_open_repo(repo, workspace_id=free_workspace, backend=backend) + [
+        SwitchWorkspace(workspace_id=free_workspace)
+    ]

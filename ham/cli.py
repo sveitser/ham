@@ -145,7 +145,7 @@ def _switch_actions(repo: Path, branch: str, backend) -> list[Action]:
         worktree_exists=wt_exists,
         branch_exists=git.branch_exists(repo, branch),
         remote_branch_exists=git.remote_branch_exists(repo, branch),
-        backend_type=backend.name,
+        backend=backend,
     )
 
 
@@ -161,7 +161,7 @@ def _switch_repo_actions(repo: Path, backend) -> list[Action]:
         free_workspace=_target_workspace(backend, hint)
         if workspace_id is None
         else "0",
-        backend_type=backend.name,
+        backend=backend,
     )
 
 

@@ -859,4 +859,4 @@ def test_target_workspace_tmux(monkeypatch: pytest.MonkeyPatch) -> None:
         main()
     mock_plan.assert_called_once()
     call_kwargs = mock_plan.call_args
-    assert call_kwargs[1]["backend_type"] == "tmux"
+    assert call_kwargs[1]["backend"] is backend

@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -24,10 +24,19 @@ from ham.orchestrator import (
 )
 
 REPO = Path("/fake/repo")
-WS_ID = 5
+WS_ID = "5"
+
+
+def _mock_backend():
+    b = MagicMock()
+    b.layout_actions = MagicMock(
+        return_value=[LaunchProcess(cmd=["x"], workspace_id=WS_ID)]
+    )
+    return b
 
 
 def test_open_create_worktree_ok() -> None:
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "my-feature",
@@ -35,14 +44,16 @@ def test_open_create_worktree_ok() -> None:
         worktree_exists=False,
         branch_exists=False,
         workspace_id=WS_ID,
+        backend=backend,
     )
     assert isinstance(actions[0], GitWorktreeAdd)
     assert actions[0].create_branch is True
     assert isinstance(actions[1], SetupDirenv)
-    assert len([a for a in actions if isinstance(a, LaunchProcess)]) == 3
+    assert len([a for a in actions if isinstance(a, LaunchProcess)]) == 1
 
 
 def test_open_reuse_worktree_ok() -> None:
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "my-feature",
@@ -50,6 +61,7 @@ def test_open_reuse_worktree_ok() -> None:
         worktree_exists=True,
         branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
     assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
     assert isinstance(actions[0], SetupDirenv)
@@ -57,68 +69,36 @@ def test_open_reuse_worktree_ok() -> None:
 
 def test_open_launch_apps_new_worktree() -> None:
     wt_path = worktree_path(REPO, "feat")
-    actions = plan_open(
+    backend = _mock_backend()
+    plan_open(
         REPO,
         "feat",
         is_git_repo=True,
         worktree_exists=False,
         branch_exists=False,
         workspace_id=WS_ID,
+        backend=backend,
     )
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert launches[0].cmd == ["alacritty", "--working-directory", str(wt_path)]
-    assert launches[1].cmd == [
-        "direnv",
-        "exec",
-        str(wt_path),
-        "emacs",
-        str(wt_path / "README.md"),
-    ]
-    assert launches[2].cmd == [
-        "alacritty",
-        "--working-directory",
-        str(wt_path),
-        "-e",
-        "direnv",
-        "exec",
-        str(wt_path),
-        "claude",
-    ]
+    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, False)
 
 
 def test_open_launch_apps_existing_worktree() -> None:
     wt_path = worktree_path(REPO, "feat")
-    actions = plan_open(
+    backend = _mock_backend()
+    plan_open(
         REPO,
         "feat",
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert launches[0].cmd == ["alacritty", "--working-directory", str(wt_path)]
-    assert launches[1].cmd == [
-        "direnv",
-        "exec",
-        str(wt_path),
-        "emacs",
-        str(wt_path / "README.md"),
-    ]
-    assert launches[2].cmd == [
-        "alacritty",
-        "--working-directory",
-        str(wt_path),
-        "-e",
-        "direnv",
-        "exec",
-        str(wt_path),
-        "claude",
-        "--continue",
-    ]
+    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, True)
 
 
 def test_open_sanitize_branch_ok() -> None:
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "test/sanitize",
@@ -126,6 +106,7 @@ def test_open_sanitize_branch_ok() -> None:
         worktree_exists=False,
         branch_exists=False,
         workspace_id=WS_ID,
+        backend=backend,
     )
     wt_add = actions[0]
     assert isinstance(wt_add, GitWorktreeAdd)
@@ -228,6 +209,7 @@ def test_delete_closes_windows() -> None:
 
 
 def test_open_invalid_repo_fails() -> None:
+    backend = _mock_backend()
     with pytest.raises(ValueError, match="not a git repository"):
         plan_open(
             REPO,
@@ -236,10 +218,12 @@ def test_open_invalid_repo_fails() -> None:
             worktree_exists=False,
             branch_exists=False,
             workspace_id=WS_ID,
+            backend=backend,
         )
 
 
 def test_open_branch_exists_ok() -> None:
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "existing",
@@ -247,6 +231,7 @@ def test_open_branch_exists_ok() -> None:
         worktree_exists=False,
         branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
     wt_add = actions[0]
     assert isinstance(wt_add, GitWorktreeAdd)
@@ -255,6 +240,7 @@ def test_open_branch_exists_ok() -> None:
 
 
 def test_open_remote_branch_creates_tracking() -> None:
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "from-remote",
@@ -263,6 +249,7 @@ def test_open_remote_branch_creates_tracking() -> None:
         branch_exists=False,
         remote_branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
     wt_add = actions[0]
     assert isinstance(wt_add, GitWorktreeAdd)
@@ -271,6 +258,7 @@ def test_open_remote_branch_creates_tracking() -> None:
 
 
 def test_open_local_branch_wins_over_remote() -> None:
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "shared",
@@ -279,6 +267,7 @@ def test_open_local_branch_wins_over_remote() -> None:
         branch_exists=True,
         remote_branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
     wt_add = actions[0]
     assert isinstance(wt_add, GitWorktreeAdd)
@@ -304,21 +293,22 @@ def test_delete_worktree_missing_fails() -> None:
 
 
 def test_open_no_continue_new_worktree() -> None:
-    actions = plan_open(
+    backend = _mock_backend()
+    plan_open(
         REPO,
         "feat",
         is_git_repo=True,
         worktree_exists=False,
         branch_exists=False,
         workspace_id=WS_ID,
+        backend=backend,
     )
-    claude_launch = actions[-1]
-    assert isinstance(claude_launch, LaunchProcess)
-    assert "--continue" not in claude_launch.cmd
+    wt_path = worktree_path(REPO, "feat")
+    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, False)
 
 
 def test_open_claude_is_last() -> None:
-    wt_path = worktree_path(REPO, "feat")
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "feat",
@@ -326,18 +316,10 @@ def test_open_claude_is_last() -> None:
         worktree_exists=False,
         branch_exists=False,
         workspace_id=WS_ID,
+        backend=backend,
     )
     assert isinstance(actions[-1], LaunchProcess)
-    assert actions[-1].cmd == [
-        "alacritty",
-        "--working-directory",
-        str(wt_path),
-        "-e",
-        "direnv",
-        "exec",
-        str(wt_path),
-        "claude",
-    ]
+    assert actions[-1].cmd == ["x"]
 
 
 def test_close_own_window_last() -> None:
@@ -409,31 +391,35 @@ def test_close_ancestors_ordered_by_distance() -> None:
 
 def test_switch_focus_existing_ok() -> None:
     """REQ:switch-focus-existing: windows exist, produces SwitchWorkspace."""
+    backend = _mock_backend()
     actions = plan_switch(
         REPO,
         "feat",
-        workspace_id=3,
-        free_workspace=5,
+        workspace_id="3",
+        free_workspace="5",
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
+        backend=backend,
     )
-    assert actions == [SwitchWorkspace(workspace_id=3)]
+    assert actions == [SwitchWorkspace(workspace_id="3")]
 
 
 def test_switch_open_new_ok() -> None:
     """REQ:switch-open-new: no windows, produces open actions then SwitchWorkspace last."""
+    backend = _mock_backend()
     actions = plan_switch(
         REPO,
         "feat",
         workspace_id=None,
-        free_workspace=5,
+        free_workspace="5",
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
+        backend=backend,
     )
     assert isinstance(actions[-1], SwitchWorkspace)
-    assert actions[-1].workspace_id == 5
+    assert actions[-1].workspace_id == "5"
     assert len(actions) > 1
     assert not isinstance(actions[0], SwitchWorkspace)
 
@@ -456,52 +442,49 @@ def test_get_workspace_for_windows_returns_first() -> None:
 
 def test_launch_workspace_pin_ok() -> None:
     """TEST:launch-workspace-pin-ok: plan_open creates LaunchProcess with correct workspace_id."""
-    actions = plan_open(
+    backend = _mock_backend()
+    plan_open(
         REPO,
         "feat",
         is_git_repo=True,
         worktree_exists=False,
         branch_exists=False,
-        workspace_id=7,
+        workspace_id="7",
+        backend=backend,
     )
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert len(launches) == 3
-    assert all(lp.workspace_id == 7 for lp in launches)
+    backend.layout_actions.assert_called_once_with(
+        worktree_path(REPO, "feat"), "7", False
+    )
 
 
 def test_launch_cwd_ok() -> None:
-    """TEST:launch-cwd-ok: plan_open embeds --working-directory in alacritty cmds and absolute path for emacs."""
+    """TEST:launch-cwd-ok: plan_open calls layout_actions with the worktree path."""
     wt_path = worktree_path(REPO, "feat")
-    actions = plan_open(
+    backend = _mock_backend()
+    plan_open(
         REPO,
         "feat",
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    # alacritty terminal
-    assert "--working-directory" in launches[0].cmd
-    assert str(wt_path) in launches[0].cmd
-    # emacs via direnv
-    assert launches[1].cmd[:3] == ["direnv", "exec", str(wt_path)]
-    assert "emacs" in launches[1].cmd
-    # claude alacritty via direnv
-    assert "direnv" in launches[2].cmd
-    assert str(wt_path) in launches[2].cmd
+    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, True)
 
 
 def test_switch_order_ok() -> None:
     """TEST:switch-order-ok: plan_switch puts SwitchWorkspace as last action."""
+    backend = _mock_backend()
     actions = plan_switch(
         REPO,
         "feat",
         workspace_id=None,
-        free_workspace=5,
+        free_workspace="5",
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
+        backend=backend,
     )
     assert isinstance(actions[-1], SwitchWorkspace)
     for a in actions[:-1]:
@@ -509,22 +492,24 @@ def test_switch_order_ok() -> None:
 
 
 def test_launch_claude_continue_ok() -> None:
-    """TEST:launch-claude-continue-ok: existing worktree cmd includes --continue."""
-    actions = plan_open(
+    """TEST:launch-claude-continue-ok: existing worktree calls layout_actions with claude_continue=True."""
+    wt_path = worktree_path(REPO, "feat")
+    backend = _mock_backend()
+    plan_open(
         REPO,
         "feat",
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
         workspace_id=WS_ID,
+        backend=backend,
     )
-    claude_launch = actions[-1]
-    assert isinstance(claude_launch, LaunchProcess)
-    assert "--continue" in claude_launch.cmd
+    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, True)
 
 
 def test_launch_new_worktree_ok() -> None:
     """TEST:launch-new-worktree-ok: GitWorktreeAdd precedes LaunchProcess actions."""
+    backend = _mock_backend()
     actions = plan_open(
         REPO,
         "feat",
@@ -532,6 +517,7 @@ def test_launch_new_worktree_ok() -> None:
         worktree_exists=False,
         branch_exists=False,
         workspace_id=WS_ID,
+        backend=backend,
     )
     wt_idx = next(i for i, a in enumerate(actions) if isinstance(a, GitWorktreeAdd))
     first_launch_idx = next(
@@ -541,87 +527,41 @@ def test_launch_new_worktree_ok() -> None:
 
 
 def test_open_repo_no_worktree_actions() -> None:
-    actions = plan_open_repo(REPO, workspace_id=WS_ID)
+    backend = _mock_backend()
+    actions = plan_open_repo(REPO, workspace_id=WS_ID, backend=backend)
     assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
     assert isinstance(actions[0], SetupDirenv)
     assert actions[0].cwd == REPO
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert len(launches) == 3
-    assert all(lp.workspace_id == WS_ID for lp in launches)
+    backend.layout_actions.assert_called_once_with(REPO, WS_ID, True)
 
 
 def test_open_repo_uses_repo_path() -> None:
-    actions = plan_open_repo(REPO, workspace_id=WS_ID)
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert launches[0].cmd == ["alacritty", "--working-directory", str(REPO)]
-    assert launches[1].cmd == [
-        "direnv",
-        "exec",
-        str(REPO),
-        "emacs",
-        str(REPO / "README.md"),
-    ]
-    assert launches[2].cmd == [
-        "alacritty",
-        "--working-directory",
-        str(REPO),
-        "-e",
-        "direnv",
-        "exec",
-        str(REPO),
-        "claude",
-        "--continue",
-    ]
+    backend = _mock_backend()
+    plan_open_repo(REPO, workspace_id=WS_ID, backend=backend)
+    backend.layout_actions.assert_called_once_with(REPO, WS_ID, True)
 
 
 def test_switch_repo_focus_existing() -> None:
-    actions = plan_switch_repo(REPO, workspace_id=3, free_workspace=5)
-    assert actions == [SwitchWorkspace(workspace_id=3)]
+    backend = _mock_backend()
+    actions = plan_switch_repo(
+        REPO, workspace_id="3", free_workspace="5", backend=backend
+    )
+    assert actions == [SwitchWorkspace(workspace_id="3")]
 
 
 def test_switch_repo_open_new() -> None:
-    actions = plan_switch_repo(REPO, workspace_id=None, free_workspace=5)
+    backend = _mock_backend()
+    actions = plan_switch_repo(
+        REPO, workspace_id=None, free_workspace="5", backend=backend
+    )
     assert isinstance(actions[-1], SwitchWorkspace)
-    assert actions[-1].workspace_id == 5
+    assert actions[-1].workspace_id == "5"
     assert any(isinstance(a, LaunchProcess) for a in actions)
     assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
 
 
-def test_launch_actions_tmux_cmds() -> None:
-    wt_path = worktree_path(REPO, "feat")
-    actions = plan_open(
-        REPO,
-        "feat",
-        is_git_repo=True,
-        worktree_exists=False,
-        branch_exists=False,
-        workspace_id="myrepo-feat",
-        backend_type="tmux",
-    )
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    assert len(launches) == 2
-    assert launches[0].cmd == ["bash"]
-    assert "claude" in " ".join(launches[1].cmd)
-    assert not any("alacritty" in " ".join(la.cmd) for la in launches)
-    assert all(la.cwd == wt_path for la in launches)
-
-
-def test_launch_actions_tmux_claude_continue() -> None:
-    actions = plan_open(
-        REPO,
-        "feat",
-        is_git_repo=True,
-        worktree_exists=True,
-        branch_exists=True,
-        workspace_id="myrepo-feat",
-        backend_type="tmux",
-    )
-    launches = [a for a in actions if isinstance(a, LaunchProcess)]
-    claude_launch = next(la for la in launches if "claude" in " ".join(la.cmd))
-    assert "--continue" in claude_launch.cmd
-
-
 def test_switch_tmux_focus_existing() -> None:
+    backend = _mock_backend()
     actions = plan_switch(
         REPO,
         "feat",
@@ -630,12 +570,13 @@ def test_switch_tmux_focus_existing() -> None:
         is_git_repo=True,
         worktree_exists=True,
         branch_exists=True,
-        backend_type="tmux",
+        backend=backend,
     )
     assert actions == [SwitchWorkspace(workspace_id="myrepo-feat")]
 
 
 def test_switch_tmux_open_new() -> None:
+    backend = _mock_backend()
     actions = plan_switch(
         REPO,
         "feat",
@@ -644,7 +585,28 @@ def test_switch_tmux_open_new() -> None:
         is_git_repo=True,
         worktree_exists=False,
         branch_exists=False,
-        backend_type="tmux",
+        backend=backend,
     )
     assert any(isinstance(a, LaunchProcess) for a in actions)
     assert actions[-1] == SwitchWorkspace(workspace_id="myrepo-feat")
+
+
+def test_plan_open_calls_layout_actions() -> None:
+    wt_path = worktree_path(REPO, "feat")
+    backend = _mock_backend()
+    plan_open(
+        REPO,
+        "feat",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        workspace_id=WS_ID,
+        backend=backend,
+    )
+    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, False)
+
+
+def test_plan_open_repo_calls_layout_actions() -> None:
+    backend = _mock_backend()
+    plan_open_repo(REPO, workspace_id=WS_ID, backend=backend)
+    backend.layout_actions.assert_called_once_with(REPO, WS_ID, True)

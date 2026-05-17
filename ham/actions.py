@@ -48,3 +48,11 @@ class PromptConfirmation(Action):
 @dataclass
 class SwitchWorkspace(Action):
     workspace_id: str
+
+
+@dataclass
+class TmuxLayout(Action):
+    session_name: str
+    cwd: Path
+    emacs_cmd: list[str]
+    claude_cmd: list[str]

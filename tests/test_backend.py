@@ -1,6 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from ham.actions import LaunchProcess, TmuxLayout
 from ham.backend import HyprlandBackend, TmuxBackend, detect_backend
 from ham.hyprland import HyprlandWindow
 from ham.tmux import TmuxWindow
@@ -105,3 +106,34 @@ def test_tmux_backend_windows_in_path() -> None:
     with patch("ham.backend.tmux.windows_in_path", return_value=[w]):
         result = b.windows_in_path([w], Path("/tmp/wt"))
     assert result == [w]
+
+
+def test_hyprland_backend_layout_actions() -> None:
+    b = HyprlandBackend()
+    actions = b.layout_actions(Path("/repo"), "5", False)
+    assert len(actions) == 3
+    assert all(isinstance(a, LaunchProcess) for a in actions)
+    cmds = [a.cmd[0] for a in actions]
+    assert "alacritty" in cmds
+    assert "direnv" in cmds
+
+
+def test_hyprland_backend_layout_actions_continue() -> None:
+    b = HyprlandBackend()
+    actions = b.layout_actions(Path("/repo"), "5", True)
+    assert any("--continue" in a.cmd for a in actions)
+
+
+def test_tmux_backend_layout_actions() -> None:
+    b = TmuxBackend()
+    actions = b.layout_actions(Path("/repo"), "myrepo-feat", False)
+    assert len(actions) == 1
+    assert isinstance(actions[0], TmuxLayout)
+    assert actions[0].session_name == "myrepo-feat"
+    assert "--continue" not in actions[0].claude_cmd
+
+
+def test_tmux_backend_layout_actions_continue() -> None:
+    b = TmuxBackend()
+    actions = b.layout_actions(Path("/repo"), "myrepo-feat", True)
+    assert "--continue" in actions[0].claude_cmd

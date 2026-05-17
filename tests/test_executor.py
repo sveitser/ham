@@ -13,6 +13,7 @@ from ham.actions import (
     PromptConfirmation,
     SetupDirenv,
     SwitchWorkspace,
+    TmuxLayout,
 )
 from ham.executor import execute
 
@@ -197,34 +198,58 @@ def test_unknown_action_raises() -> None:
         execute([FakeAction()])
 
 
-def test_launch_process_tmux_creates_session() -> None:
+def test_tmux_layout_creates_session() -> None:
+    action = TmuxLayout(
+        session_name="myrepo-feat",
+        cwd=Path("/tmp/wt"),
+        emacs_cmd=["direnv", "exec", "/tmp/wt", "emacs", "/tmp/wt"],
+        claude_cmd=["direnv", "exec", "/tmp/wt", "claude"],
+    )
     with patch("ham.executor.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1)
-        execute(
-            [
-                LaunchProcess(
-                    cmd=["bash"], workspace_id="myrepo-feat", cwd=Path("/tmp/wt")
-                )
-            ],
-            "tmux",
-        )
+        execute([action])
     calls = [c.args[0] for c in mock_run.call_args_list]
     assert any("new-session" in str(c) for c in calls)
+    assert not any("new-window" in str(c) for c in calls)
 
 
-def test_launch_process_tmux_adds_window() -> None:
+def test_tmux_layout_adds_window() -> None:
+    action = TmuxLayout(
+        session_name="myrepo-feat",
+        cwd=Path("/tmp/wt"),
+        emacs_cmd=["direnv", "exec", "/tmp/wt", "emacs", "/tmp/wt"],
+        claude_cmd=["direnv", "exec", "/tmp/wt", "claude"],
+    )
     with patch("ham.executor.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
-        execute(
-            [
-                LaunchProcess(
-                    cmd=["bash"], workspace_id="myrepo-feat", cwd=Path("/tmp/wt")
-                )
-            ],
-            "tmux",
-        )
+        execute([action])
     calls = [c.args[0] for c in mock_run.call_args_list]
     assert any("new-window" in str(c) for c in calls)
+    assert not any("new-session" in str(c) for c in calls)
+
+
+def test_tmux_layout_splits_and_sends() -> None:
+    action = TmuxLayout(
+        session_name="myrepo-feat",
+        cwd=Path("/tmp/wt"),
+        emacs_cmd=["direnv", "exec", "/tmp/wt", "emacs", "/tmp/wt"],
+        claude_cmd=["direnv", "exec", "/tmp/wt", "claude"],
+    )
+    with patch("ham.executor.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=1)
+        execute([action])
+    calls = [c.args[0] for c in mock_run.call_args_list]
+    split_calls = [c for c in calls if "split-window" in str(c)]
+    assert len(split_calls) == 2
+    assert any("-t" in c and "myrepo-feat:0.0" in c for c in split_calls)
+    assert any("-t" in c and "myrepo-feat:0.1" in c for c in split_calls)
+    send_calls = [c for c in calls if "send-keys" in str(c)]
+    assert len(send_calls) == 2
+    assert any("myrepo-feat:0.0" in c for c in send_calls)
+    assert any("myrepo-feat:0.1" in c for c in send_calls)
+    select_calls = [c for c in calls if "select-pane" in str(c)]
+    assert len(select_calls) == 1
+    assert "myrepo-feat:0.2" in select_calls[0]
 
 
 def test_close_window_tmux() -> None:
