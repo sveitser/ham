@@ -88,7 +88,7 @@ class TmuxBackend:
         self, cwd: Path, workspace_id: str, claude_continue: bool
     ) -> list[TmuxLayout]:
         direnv = ["direnv", "exec", str(cwd)]
-        emacs_cmd = direnv + ["emacs", str(cwd)]
+        emacs_cmd = direnv + ["emacs", "-nw", str(cwd)]
         claude_cmd = direnv + ["claude"] + (["--continue"] if claude_continue else [])
         return [
             TmuxLayout(
