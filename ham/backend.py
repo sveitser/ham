@@ -82,7 +82,7 @@ class TmuxBackend:
     def windows_in_path(
         self, windows: list[TmuxWindow], path: Path, own_last: bool = True
     ) -> list[TmuxWindow]:
-        return tmux.windows_in_path(windows, path)
+        return tmux.windows_in_path(windows, path, own_last)
 
     def layout_actions(
         self, cwd: Path, workspace_id: str, claude_continue: bool

@@ -34,10 +34,13 @@ Backend is auto-detected:
 ## Architecture
 - Action/Effect pattern: orchestrator produces `list[Action]`, executor runs them
 - Tests assert on action lists, no mocking needed
-- `ham/orchestrator.py` - business logic (plan_open, plan_close, plan_delete, plan_switch)
+- `ham/orchestrator.py` - backend-agnostic business logic; receives pre-filtered windows, never imports from `ham.hyprland` or `ham.tmux`
 - `ham/actions.py` - action dataclasses
 - `ham/executor.py` - runs actions
-- `ham/backend.py` - backend protocol + Hyprland/tmux implementations (layout_actions, get_windows, etc.)
-- `ham/hyprland.py` - hyprctl queries
-- `ham/tmux.py` - tmux queries
+- `ham/backend.py` - `Backend` protocol + `HyprlandBackend`/`TmuxBackend`; owns `windows_in_path`, `get_windows`, `layout_actions`
+- `ham/hyprland.py` - hyprctl queries (Hyprland-specific)
+- `ham/tmux.py` - tmux queries (tmux-specific)
 - `ham/git.py` - git worktree ops + repo discovery
+- `ham/cli.py` - argument parsing; calls `backend.windows_in_path` to filter windows before passing to orchestrator
+
+**Layer rule**: window filtering always happens in `cli.py` via `backend.windows_in_path`; orchestrator functions (`plan_close`, `plan_delete`) receive already-matched windows.

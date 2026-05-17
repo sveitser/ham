@@ -29,7 +29,9 @@ def find_free_session(hint: str) -> str:
     return hint
 
 
-def windows_in_path(windows: list[TmuxWindow], path: Path) -> list[TmuxWindow]:
+def windows_in_path(
+    windows: list[TmuxWindow], path: Path, own_last: bool = True
+) -> list[TmuxWindow]:
     resolved = path.resolve()
     return [w for w in windows if w.pane_cwd.resolve().is_relative_to(resolved)]
 

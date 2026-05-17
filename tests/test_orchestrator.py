@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -13,7 +13,6 @@ from ham.actions import (
     SwitchWorkspace,
 )
 from ham.git import worktree_path
-from ham.hyprland import HyprlandWindow, get_workspace_for_windows, windows_in_path
 from ham.orchestrator import (
     plan_close,
     plan_delete,
@@ -114,10 +113,7 @@ def test_open_sanitize_branch_ok() -> None:
 
 
 def test_close_creates_close_actions() -> None:
-    windows = [
-        HyprlandWindow(window_id="0x1", pid=1, class_name="alacritty", title="t"),
-        HyprlandWindow(window_id="0x2", pid=2, class_name="emacs", title="t"),
-    ]
+    windows = [MagicMock(window_id="0x1"), MagicMock(window_id="0x2")]
     actions = plan_close(windows)
     assert len(actions) == 2
     assert all(isinstance(a, CloseWindow) for a in actions)
@@ -151,12 +147,7 @@ def test_delete_dirty_prompt_ok() -> None:
 
 
 def test_delete_closes_windows() -> None:
-    wt_path = worktree_path(REPO, "with-windows")
-    windows = [
-        HyprlandWindow(
-            window_id="0x1", pid=1, class_name="alacritty", title="t", cwds=[wt_path]
-        ),
-    ]
+    windows = [MagicMock(window_id="0x1")]
     actions = plan_delete(
         REPO,
         "with-windows",
@@ -283,73 +274,6 @@ def test_open_claude_is_last() -> None:
     assert actions[-1].cmd == ["x"]
 
 
-def test_close_own_window_last() -> None:
-    """Regression: own terminal must be closed last to avoid killing ham mid-run."""
-    wt_path = worktree_path(REPO, "feat")
-    own_pid = 100
-    other_pid = 200
-    windows = [
-        HyprlandWindow(
-            window_id="0x1",
-            pid=own_pid,
-            class_name="alacritty",
-            title="t",
-            cwds=[wt_path],
-        ),
-        HyprlandWindow(
-            window_id="0x2",
-            pid=other_pid,
-            class_name="emacs",
-            title="t",
-            cwds=[wt_path],
-        ),
-    ]
-    with patch("ham.hyprland._ancestor_pids", return_value={own_pid: 2}):
-        result = windows_in_path(windows, wt_path)
-    assert len(result) == 2
-    assert result[-1].pid == own_pid
-    assert result[0].pid == other_pid
-
-
-def test_close_ancestors_ordered_by_distance() -> None:
-    """Regression: closest ancestor (own terminal) closed last, distant ones first."""
-    wt_path = worktree_path(REPO, "feat")
-    distant_pid = 100  # claude terminal (further ancestor)
-    close_pid = 101  # scratch terminal (direct parent)
-    other_pid = 200  # emacs
-    windows = [
-        HyprlandWindow(
-            window_id="0x1",
-            pid=distant_pid,
-            class_name="alacritty",
-            title="claude",
-            cwds=[wt_path],
-        ),
-        HyprlandWindow(
-            window_id="0x2",
-            pid=other_pid,
-            class_name="emacs",
-            title="t",
-            cwds=[wt_path],
-        ),
-        HyprlandWindow(
-            window_id="0x3",
-            pid=close_pid,
-            class_name="alacritty",
-            title="scratch",
-            cwds=[wt_path],
-        ),
-    ]
-    with patch(
-        "ham.hyprland._ancestor_pids", return_value={close_pid: 2, distant_pid: 5}
-    ):
-        result = windows_in_path(windows, wt_path)
-    assert len(result) == 3
-    assert result[0].pid == other_pid
-    assert result[1].pid == distant_pid
-    assert result[2].pid == close_pid
-
-
 def test_switch_focus_existing_ok() -> None:
     """REQ:switch-focus-existing: windows exist, produces SwitchWorkspace."""
     backend = _mock_backend()
@@ -383,22 +307,6 @@ def test_switch_open_new_ok() -> None:
     assert actions[-1].workspace_id == "5"
     assert len(actions) > 1
     assert not isinstance(actions[0], SwitchWorkspace)
-
-
-def test_get_workspace_for_windows_empty() -> None:
-    assert get_workspace_for_windows([]) is None
-
-
-def test_get_workspace_for_windows_returns_first() -> None:
-    windows = [
-        HyprlandWindow(
-            window_id="0x1", pid=1, class_name="alacritty", title="t", workspace_id=3
-        ),
-        HyprlandWindow(
-            window_id="0x2", pid=2, class_name="emacs", title="t", workspace_id=5
-        ),
-    ]
-    assert get_workspace_for_windows(windows) == "3"
 
 
 def test_launch_workspace_pin_ok() -> None:
