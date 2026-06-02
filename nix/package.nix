@@ -1,4 +1,4 @@
-{ buildPythonPackage, setuptools, gitRev ? "unknown", gitDate ? "unknown" }:
+{ buildPythonPackage, setuptools, platformdirs, gitRev ? "unknown", gitDate ? "unknown" }:
 
 buildPythonPackage {
   pname = "ham";
@@ -8,6 +8,8 @@ buildPythonPackage {
   src = ./..;
 
   build-system = [ setuptools ];
+
+  dependencies = [ platformdirs ];
 
   pythonImportsCheck = [ "ham" ];
 

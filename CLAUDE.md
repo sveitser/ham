@@ -23,9 +23,25 @@ Workspace management tool for hyprland + Claude Code. Also works headless via tm
 - `ham rofi` - same picker via rofi (no ctrl-d binding)
 - `ham close [repo_name/branch | repo_path branch]` - close workspace windows (resolves from cwd if no args)
 - `ham delete [repo_name/branch | repo_path branch]` - delete worktree and close windows (also accepts `wt: repo/branch` from picker)
+- `ham init` - write a starter config file (errors if one already exists)
 
 ## Environment
 - `HAM_REPO_DIR` - repo discovery root (default: `~/r`), scanned 2 levels deep (org/repo)
+
+## Config file
+Optional TOML at `platformdirs.user_config_path("ham")/config.toml` (Linux `~/.config/ham/config.toml`, macOS `~/Library/Application Support/ham/config.toml`). Absent file = built-in defaults. `ham init` writes a starter. Command values are TOML strings, `shlex.split` at load.
+
+Keys (all optional):
+- `terminal` - terminal emulator (Hyprland only). Default: infer from `$TERM_PROGRAM` (macOS) / `$TERM` (Linux), else alacritty
+- `gui_editor` - editor that opens `<worktree>/<readme_file>`. Default `emacs`
+- `headless_editor` - tmux editor for the worktree dir. Default `emacs -nw`
+- `readme_file` - file opened by gui_editor. Default `README.md`
+- `use_direnv` - wrap launched commands in `direnv exec <cwd>`. Default `true`
+- `default_agent` - agent command when no `[[agent]]` rule matches. Default `claude`
+- `agent_continue_default` - force `--continue` when opening. Default `false`
+- `repo_dir` - overrides `$HAM_REPO_DIR`
+- `default_start_point` - default `--from` ref for new branches. Default `origin/main`
+- `[[agent]]` rules - `pattern` (glob on source repo path, `~` expanded) + `command`. Deepest/most-specific match wins, order-independent
 
 ## Backend
 Backend is auto-detected:
@@ -42,6 +58,7 @@ Backend is auto-detected:
 - `ham/hyprland.py` - hyprctl queries (Hyprland-specific)
 - `ham/tmux.py` - tmux queries (tmux-specific)
 - `ham/git.py` - git worktree ops + repo discovery
-- `ham/cli.py` - argument parsing; calls `backend.windows_in_path` to filter windows before passing to orchestrator
+- `ham/config.py` - TOML config: `Config`/`LayoutSpec`, `load_config`, `init_config`, `resolve_terminal`, `build_layout_spec`; orchestrator builds a `LayoutSpec` (repo-resolved agent/editor/terminal) and passes it to the backend
+- `ham/cli.py` - argument parsing; loads config, calls `backend.windows_in_path` to filter windows before passing to orchestrator
 
 **Layer rule**: window filtering always happens in `cli.py` via `backend.windows_in_path`; orchestrator functions (`plan_close`, `plan_delete`) receive already-matched windows.

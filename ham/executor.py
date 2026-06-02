@@ -108,7 +108,7 @@ def _execute_one(action: Action, backend: str = "hyprland") -> None:
                 check=True,
             )
 
-        case TmuxLayout(session_name, cwd, emacs_cmd, claude_cmd):
+        case TmuxLayout(session_name, cwd, emacs_cmd, agent_cmd):
             has = (
                 subprocess.run(
                     ["tmux", "has-session", "-t", session_name], capture_output=True
@@ -166,7 +166,7 @@ def _execute_one(action: Action, backend: str = "hyprland") -> None:
                     "send-keys",
                     "-t",
                     f"{session_name}:0.1",
-                    shlex.join(claude_cmd),
+                    shlex.join(agent_cmd),
                     "Enter",
                 ],
                 check=True,

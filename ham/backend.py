@@ -1,11 +1,24 @@
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
 from ham import hyprland, tmux
 from ham.actions import LaunchProcess, TmuxLayout
+from ham.config import LayoutSpec
 from ham.hyprland import HyprlandWindow
 from ham.tmux import TmuxWindow
+
+
+def _spec_or_default(spec: LayoutSpec | None, agent_continue: bool) -> LayoutSpec:
+    """A passed spec is used as-is (agent_cmd already resolved); a missing spec
+    falls back to defaults with --continue applied for backward compatibility."""
+    if spec is not None:
+        return spec
+    base = LayoutSpec.defaults()
+    if not agent_continue:
+        return base
+    return replace(base, agent_cmd=base.agent_cmd + ["--continue"])
 
 
 class Backend(Protocol):
@@ -19,7 +32,11 @@ class Backend(Protocol):
         self, windows: list, path: Path, own_last: bool = True
     ) -> list: ...
     def layout_actions(
-        self, cwd: Path, workspace_id: str, claude_continue: bool
+        self,
+        cwd: Path,
+        workspace_id: str,
+        agent_continue: bool,
+        spec: LayoutSpec | None = None,
     ) -> list: ...
 
 
@@ -44,21 +61,28 @@ class HyprlandBackend:
         return hyprland.windows_in_path(windows, path, own_last)
 
     def layout_actions(
-        self, cwd: Path, workspace_id: str, claude_continue: bool
+        self,
+        cwd: Path,
+        workspace_id: str,
+        agent_continue: bool,
+        spec: LayoutSpec | None = None,
     ) -> list[LaunchProcess]:
-        direnv = ["direnv", "exec", str(cwd)]
-        claude_cmd = direnv + ["claude"] + (["--continue"] if claude_continue else [])
+        spec = _spec_or_default(spec, agent_continue)
+        direnv = ["direnv", "exec", str(cwd)] if spec.use_direnv else []
+        term = spec.terminal
         return [
             LaunchProcess(
-                cmd=["alacritty", "--working-directory", str(cwd)],
+                cmd=[term.bin, term.cwd_flag, str(cwd)],
                 workspace_id=workspace_id,
             ),
             LaunchProcess(
-                cmd=direnv + ["emacs", str(cwd / "README.md")],
+                cmd=direnv + spec.gui_editor + [str(cwd / spec.readme_file)],
                 workspace_id=workspace_id,
             ),
             LaunchProcess(
-                cmd=["alacritty", "--working-directory", str(cwd), "-e"] + claude_cmd,
+                cmd=[term.bin, term.cwd_flag, str(cwd), term.exec_flag]
+                + direnv
+                + spec.agent_cmd,
                 workspace_id=workspace_id,
             ),
         ]
@@ -85,17 +109,22 @@ class TmuxBackend:
         return tmux.windows_in_path(windows, path, own_last)
 
     def layout_actions(
-        self, cwd: Path, workspace_id: str, claude_continue: bool
+        self,
+        cwd: Path,
+        workspace_id: str,
+        agent_continue: bool,
+        spec: LayoutSpec | None = None,
     ) -> list[TmuxLayout]:
-        direnv = ["direnv", "exec", str(cwd)]
-        emacs_cmd = direnv + ["emacs", "-nw", str(cwd)]
-        claude_cmd = direnv + ["claude"] + (["--continue"] if claude_continue else [])
+        spec = _spec_or_default(spec, agent_continue)
+        direnv = ["direnv", "exec", str(cwd)] if spec.use_direnv else []
+        emacs_cmd = direnv + spec.headless_editor + [str(cwd)]
+        agent_cmd = direnv + spec.agent_cmd
         return [
             TmuxLayout(
                 session_name=workspace_id,
                 cwd=cwd,
                 emacs_cmd=emacs_cmd,
-                claude_cmd=claude_cmd,
+                agent_cmd=agent_cmd,
             )
         ]
 

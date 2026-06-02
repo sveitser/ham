@@ -8,9 +8,10 @@ from pathlib import Path
 
 from ham import git
 from ham.backend import detect_backend
+from ham.config import CONFIG_PATH, Config, init_config, load_config
 from ham.executor import execute
 from ham.git import DATA_DIR, WorktreeStatus, worktree_path
-from ham.actions import Action
+from ham.actions import Action, SwitchWorkspace
 from ham._version import GIT_DATE, GIT_REV, VERSION
 from ham.orchestrator import plan_close, plan_delete, plan_switch, plan_switch_repo
 
@@ -71,12 +72,46 @@ def picker_entries() -> list[str]:
     return lines
 
 
-def _get_selection(args: argparse.Namespace) -> tuple[Path, str | None]:
+def _workspace_label(windows, worktrees) -> str:
+    resolved_wts = [(wt.wt_path.resolve(), wt) for wt in worktrees]
+    for w in windows:
+        for cwd in w.cwds:
+            cwd_r = cwd.resolve()
+            for wt_path, wt in resolved_wts:
+                if cwd_r.is_relative_to(wt_path):
+                    return f"{wt.repo_name}/{wt.branch}"
+    seen: set[str] = set()
+    classes = [
+        c for w in windows if (c := w.class_name) not in seen and not seen.add(c)
+    ]  # type: ignore[func-returns-value]
+    return " ".join(classes)
+
+
+def _workspace_entries(backend, worktrees) -> list[str]:
+    windows = backend.get_windows()
+    if backend.name == "hyprland":
+        ws: dict[int, list] = {}
+        for w in windows:
+            ws.setdefault(w.workspace_id, []).append(w)
+        return [
+            f"ws: {ws_id}\t{_workspace_label(ws_windows, worktrees)}"
+            for ws_id, ws_windows in sorted(ws.items())
+        ]
+    else:
+        sessions = sorted({w.session_name for w in windows})
+        return [f"ws: {s}\t" for s in sessions]
+
+
+def _get_selection(args: argparse.Namespace, backend) -> tuple[Path, str | None]:
     """Pick a worktree or repo. Returns (repo_path, branch) or (repo_path, None)."""
     if args.command != "rofi" and getattr(args, "query", None):
         return _resolve_selection(args.query)
 
-    entries = picker_entries()
+    worktrees = git.list_worktree_status()
+    repos = git.discover_repos()
+    wt_lines = [f"wt: {s.repo_name}/{s.branch}\t{_entry_flag(s)}" for s in worktrees]
+    repo_lines = [f"repo: {p.name}\t" for p in repos]
+    entries = _workspace_entries(backend, worktrees) + wt_lines + repo_lines
     if not entries:
         print("no worktrees or repos found", file=sys.stderr)
         raise SystemExit(1)
@@ -103,6 +138,10 @@ def _get_selection(args: argparse.Namespace) -> tuple[Path, str | None]:
     if result.returncode != 0:
         raise SystemExit(1)
     selection = result.stdout.strip().split("\t", 1)[0]
+    if selection.startswith("ws: "):
+        ws_id = selection[len("ws: ") :]
+        execute([SwitchWorkspace(workspace_id=ws_id)], backend.name)
+        raise SystemExit(0)
     return _resolve_selection(selection)
 
 
@@ -151,7 +190,12 @@ def _target_workspace(backend, hint: str = "") -> str:
 
 
 def _switch_actions(
-    repo: Path, branch: str, backend, *, start_point: str | None = None
+    repo: Path,
+    branch: str,
+    backend,
+    config: Config,
+    *,
+    start_point: str | None = None,
 ) -> list[Action]:
     """Build plan_switch actions for a repo/branch."""
     wt_path = worktree_path(repo, branch)
@@ -176,10 +220,11 @@ def _switch_actions(
         remote_branch_exists=git.remote_branch_exists(repo, branch),
         backend=backend,
         start_point=start_point,
+        config=config,
     )
 
 
-def _switch_repo_actions(repo: Path, backend) -> list[Action]:
+def _switch_repo_actions(repo: Path, backend, config: Config) -> list[Action]:
     """Build plan_switch_repo actions for a bare repo path (no worktree)."""
     windows = backend.get_windows()
     matched = backend.windows_in_path(windows, repo, own_last=False)
@@ -192,6 +237,7 @@ def _switch_repo_actions(repo: Path, backend) -> list[Action]:
         if workspace_id is None
         else "0",
         backend=backend,
+        config=config,
     )
 
 
@@ -235,6 +281,7 @@ def main() -> None:
 
     subparsers.add_parser("_entries")
     subparsers.add_parser("version", help="show version and git info")
+    subparsers.add_parser("init", help="write a starter config file")
 
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
@@ -251,6 +298,19 @@ def main() -> None:
     fh.setLevel(logging.DEBUG)
     fh.setFormatter(logging.Formatter("%(asctime)s %(name)s %(levelname)s %(message)s"))
     logging.getLogger().addHandler(fh)
+
+    if args.command == "init":
+        try:
+            p = init_config()
+        except FileExistsError:
+            print(f"config already exists: {CONFIG_PATH}", file=sys.stderr)
+            raise SystemExit(1)
+        print(f"wrote {p}")
+        return
+
+    config = load_config()
+    if config.repo_dir is not None:
+        git.REPO_DIR = config.repo_dir
 
     backend = detect_backend()
 
@@ -269,11 +329,11 @@ def main() -> None:
         return
 
     if args.command in (None, "switch", "rofi"):
-        repo, branch = _get_selection(args)
+        repo, branch = _get_selection(args, backend)
         if branch is None:
-            execute(_switch_repo_actions(repo, backend), backend.name)
+            execute(_switch_repo_actions(repo, backend, config), backend.name)
         else:
-            execute(_switch_actions(repo, branch, backend), backend.name)
+            execute(_switch_actions(repo, branch, backend, config), backend.name)
         return
 
     if args.command in ("close", "delete"):
@@ -353,7 +413,14 @@ def main() -> None:
 
     match args.command:
         case "open":
-            actions = _switch_actions(repo, branch, backend, start_point=args.start_point)
+            start_point = (
+                args.start_point
+                if args.start_point is not None
+                else config.default_start_point
+            )
+            actions = _switch_actions(
+                repo, branch, backend, config, start_point=start_point
+            )
         case "close":
             windows = backend.get_windows()
             matched = backend.windows_in_path(windows, wt_path)

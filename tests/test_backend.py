@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from ham.actions import LaunchProcess, TmuxLayout
 from ham.backend import HyprlandBackend, TmuxBackend, detect_backend
+from ham.config import LayoutSpec, TerminalSpec
 from ham.git import worktree_path
 from ham.hyprland import HyprlandWindow, get_workspace_for_windows, windows_in_path
 from ham.tmux import TmuxWindow
@@ -133,13 +134,76 @@ def test_tmux_backend_layout_actions() -> None:
     assert len(actions) == 1
     assert isinstance(actions[0], TmuxLayout)
     assert actions[0].session_name == "myrepo-feat"
-    assert "--continue" not in actions[0].claude_cmd
+    assert "--continue" not in actions[0].agent_cmd
 
 
 def test_tmux_backend_layout_actions_continue() -> None:
     b = TmuxBackend()
     actions = b.layout_actions(Path("/repo"), "myrepo-feat", True)
-    assert "--continue" in actions[0].claude_cmd
+    assert "--continue" in actions[0].agent_cmd
+
+
+def _custom_spec() -> LayoutSpec:
+    return LayoutSpec(
+        terminal=TerminalSpec(bin="kitty", cwd_flag="--directory", exec_flag="-e"),
+        gui_editor=["nvim"],
+        headless_editor=["nvim"],
+        agent_cmd=["claude-sandbox", "--continue"],
+        use_direnv=False,
+        readme_file="DOCS.md",
+    )
+
+
+def test_hyprland_backend_spec_commands() -> None:
+    """REQ:backend-spec-commands: hyprland builds launch commands from the spec."""
+    b = HyprlandBackend()
+    actions = b.layout_actions(Path("/repo"), "5", True, _custom_spec())
+    assert actions[0].cmd == ["kitty", "--directory", "/repo"]
+    assert actions[1].cmd == ["nvim", "/repo/DOCS.md"]
+    assert actions[2].cmd == [
+        "kitty",
+        "--directory",
+        "/repo",
+        "-e",
+        "claude-sandbox",
+        "--continue",
+    ]
+    assert not any(c == "direnv" for a in actions for c in a.cmd)
+
+
+def test_tmux_backend_spec_commands() -> None:
+    """REQ:backend-spec-commands: tmux builds commands from the spec."""
+    b = TmuxBackend()
+    actions = b.layout_actions(Path("/repo"), "myrepo-feat", True, _custom_spec())
+    assert actions[0].emacs_cmd == ["nvim", "/repo"]
+    assert actions[0].agent_cmd == ["claude-sandbox", "--continue"]
+
+
+def test_hyprland_backend_spec_none_matches_default() -> None:
+    """EDGE:backend-spec-none: spec=None reproduces current hardcoded behavior."""
+    b = HyprlandBackend()
+    actions = b.layout_actions(Path("/repo"), "5", True)
+    assert actions[0].cmd == ["alacritty", "--working-directory", "/repo"]
+    assert actions[1].cmd == ["direnv", "exec", "/repo", "emacs", "/repo/README.md"]
+    assert actions[2].cmd == [
+        "alacritty",
+        "--working-directory",
+        "/repo",
+        "-e",
+        "direnv",
+        "exec",
+        "/repo",
+        "claude",
+        "--continue",
+    ]
+
+
+def test_tmux_backend_spec_none_matches_default() -> None:
+    """EDGE:backend-spec-none: tmux spec=None reproduces current hardcoded behavior."""
+    b = TmuxBackend()
+    actions = b.layout_actions(Path("/repo"), "myrepo-feat", False)
+    assert actions[0].emacs_cmd == ["direnv", "exec", "/repo", "emacs", "-nw", "/repo"]
+    assert actions[0].agent_cmd == ["direnv", "exec", "/repo", "claude"]
 
 
 def test_hyprland_windows_in_path_own_window_last() -> None:

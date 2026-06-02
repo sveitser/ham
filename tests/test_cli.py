@@ -4,9 +4,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ham.cli import _version_str, main
+from dataclasses import replace
+
+from ham.actions import SwitchWorkspace
+from ham.cli import _version_str, _workspace_label, main
+from ham.config import Config
 from ham.git import WorktreeStatus
 from ham.hyprland import HyprlandWindow
+
+
+def _config(**overrides) -> Config:
+    return replace(Config.defaults(), **overrides)
 
 
 def _wt_status(
@@ -504,8 +512,10 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_rofi_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("sys.argv", ["ham", "rofi"])
     rofi_result = CompletedProcess(args=["rofi"], returncode=1, stdout="", stderr="")
+    backend = _mock_backend()
     with (
         patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
         patch("ham.cli.subprocess.run", return_value=rofi_result),
     ):
         mock_git.list_worktree_status.return_value = [_wt_status("myrepo", "feat")]
@@ -539,6 +549,90 @@ def test_rofi_repo_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     assert mock_plan.call_args[0][0] == Path("/r/org/myrepo")
 
 
+def test_rofi_ws_selection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Selecting a 'ws:' entry executes SwitchWorkspace and exits cleanly."""
+    monkeypatch.setattr("sys.argv", ["ham", "rofi"])
+    window = HyprlandWindow(
+        window_id="0x1", pid=1, class_name="Alacritty", title="t", workspace_id=3
+    )
+    rofi_result = CompletedProcess(
+        args=["rofi"], returncode=0, stdout="ws: 3\n", stderr=""
+    )
+    backend = _mock_backend(windows=[window])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.subprocess.run", return_value=rofi_result),
+        patch("ham.cli.execute") as mock_exec,
+    ):
+        mock_git.list_worktree_status.return_value = []
+        mock_git.discover_repos.return_value = []
+        with pytest.raises(SystemExit) as exc_info:
+            main()
+    assert exc_info.value.code == 0
+    mock_exec.assert_called_once()
+    actions = mock_exec.call_args[0][0]
+    assert len(actions) == 1
+    assert isinstance(actions[0], SwitchWorkspace)
+    assert actions[0].workspace_id == "3"
+
+
+def test_ws_entries_in_picker(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Active Hyprland windows appear as ws: entries at the top of the picker."""
+    monkeypatch.setattr("sys.argv", ["ham", "rofi"])
+    window = HyprlandWindow(
+        window_id="0x1", pid=1, class_name="Alacritty", title="t", workspace_id=2
+    )
+    rofi_result = CompletedProcess(args=["rofi"], returncode=1, stdout="", stderr="")
+    backend = _mock_backend(windows=[window])
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.subprocess.run", return_value=rofi_result) as mock_run,
+    ):
+        mock_git.list_worktree_status.return_value = [_wt_status("myrepo", "feat")]
+        mock_git.discover_repos.return_value = []
+        with pytest.raises(SystemExit):
+            main()
+    inp = mock_run.call_args.kwargs["input"]
+    lines = inp.split("\n")
+    assert lines[0] == "ws: 2\tAlacritty"
+    assert lines[1] == "wt: myrepo/feat\t"
+
+
+def test_workspace_label_matches_worktree() -> None:
+    wt_path = Path("/fake/data/some-repo-id/my-branch")
+    wt = WorktreeStatus(
+        repo=Path("/r/some-repo"),
+        branch="my-branch",
+        wt_path=wt_path,
+        has_modified=False,
+        has_untracked=False,
+    )
+    window = HyprlandWindow(
+        window_id="0x1",
+        pid=1,
+        class_name="Alacritty",
+        title="t",
+        cwds=[wt_path / "src"],
+        workspace_id=1,
+    )
+    assert _workspace_label([window], [wt]) == "some-repo/my-branch"
+
+
+def test_workspace_label_fallback_dedupes_classes() -> None:
+    window1 = HyprlandWindow(
+        window_id="0x1", pid=1, class_name="Alacritty", title="t", workspace_id=1
+    )
+    window2 = HyprlandWindow(
+        window_id="0x2", pid=2, class_name="Alacritty", title="t2", workspace_id=1
+    )
+    window3 = HyprlandWindow(
+        window_id="0x3", pid=3, class_name="emacs", title="t3", workspace_id=1
+    )
+    assert _workspace_label([window1, window2, window3], []) == "Alacritty emacs"
+
+
 def test_switch_repo_query(monkeypatch: pytest.MonkeyPatch) -> None:
     """ham switch 'repo: foo' resolves to repo path, uses plan_switch_repo."""
     monkeypatch.setattr("sys.argv", ["ham", "switch", "repo: myrepo"])
@@ -565,9 +659,13 @@ def test_switch_repo_ambiguous_fails(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_switch_no_entries_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No worktrees and no repos: fzf/rofi gets nothing to pick from."""
+    """No worktrees, repos, or active workspaces: fzf/rofi gets nothing to pick from."""
     monkeypatch.setattr("sys.argv", ["ham", "switch"])
-    with patch("ham.cli.git") as mock_git:
+    backend = _mock_backend()
+    with (
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+    ):
         mock_git.list_worktree_status.return_value = []
         mock_git.discover_repos.return_value = []
         with pytest.raises(SystemExit):
@@ -758,11 +856,14 @@ def test_fzf_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
     """fzf returns non-zero, should raise SystemExit."""
     monkeypatch.setattr("sys.argv", ["ham", "switch"])
     fzf_result = CompletedProcess(args=["fzf"], returncode=130, stdout="", stderr="")
+    backend = _mock_backend()
     with (
         patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
         patch("ham.cli.subprocess.run", return_value=fzf_result),
     ):
-        mock_git.list_worktrees.return_value = [("myrepo", "feat")]
+        mock_git.list_worktree_status.return_value = [_wt_status("myrepo", "feat")]
+        mock_git.discover_repos.return_value = []
         with pytest.raises(SystemExit):
             main()
 
@@ -964,3 +1065,106 @@ def test_version_command(
     monkeypatch.setattr("ham.cli.GIT_DATE", "2026-05-17_22_00_00")
     main()
     assert capsys.readouterr().out.strip() == "0.1.0+deadbeef.2026-05-17_22_00_00"
+
+
+def test_init_writes_config_ok(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """REQ:init-writes-config: ham init writes config and prints the path."""
+    monkeypatch.setattr("sys.argv", ["ham", "init"])
+    with patch("ham.cli.init_config", return_value=Path("/cfg/config.toml")) as mock:
+        main()
+    mock.assert_called_once()
+    assert "wrote /cfg/config.toml" in capsys.readouterr().out
+
+
+def test_init_refuses_existing_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """REQ:init-refuses-existing: ham init errors when config exists."""
+    monkeypatch.setattr("sys.argv", ["ham", "init"])
+    with patch("ham.cli.init_config", side_effect=FileExistsError()):
+        with pytest.raises(SystemExit) as exc:
+            main()
+    assert exc.value.code == 1
+    assert "config already exists" in capsys.readouterr().err
+
+
+def test_cli_threads_config_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """REQ:cli-threads-config: main passes the loaded config into plan_switch."""
+    monkeypatch.setattr("sys.argv", ["ham", "open", "/some/path", "my-branch"])
+    cfg = _config(default_start_point="origin/dev")
+    backend = _mock_backend()
+    with (
+        patch("ham.cli.load_config", return_value=cfg),
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = False
+        mock_git.branch_exists.return_value = False
+        mock_git.remote_branch_exists.return_value = False
+        main()
+    assert mock_plan.call_args[1]["config"] is cfg
+
+
+def test_cli_default_start_point_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """EDGE:cli-repo-dir-override: config.default_start_point applies when --from absent."""
+    monkeypatch.setattr("sys.argv", ["ham", "open", "/some/path", "my-branch"])
+    cfg = _config(default_start_point="origin/dev")
+    backend = _mock_backend()
+    with (
+        patch("ham.cli.load_config", return_value=cfg),
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = False
+        mock_git.branch_exists.return_value = False
+        mock_git.remote_branch_exists.return_value = False
+        main()
+    assert mock_plan.call_args[1]["start_point"] == "origin/dev"
+
+
+def test_cli_cli_from_overrides_config_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit --from wins over config.default_start_point."""
+    monkeypatch.setattr(
+        "sys.argv",
+        ["ham", "open", "/some/path", "my-branch", "--from", "origin/cli"],
+    )
+    cfg = _config(default_start_point="origin/dev")
+    backend = _mock_backend()
+    with (
+        patch("ham.cli.load_config", return_value=cfg),
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend", return_value=backend),
+        patch("ham.cli.worktree_path", return_value=FAKE_WT),
+        patch("ham.cli.plan_switch", return_value=[]) as mock_plan,
+        patch("ham.cli.execute"),
+    ):
+        mock_git.is_git_repo.return_value = True
+        mock_git.worktree_exists.return_value = False
+        mock_git.branch_exists.return_value = False
+        mock_git.remote_branch_exists.return_value = False
+        main()
+    assert mock_plan.call_args[1]["start_point"] == "origin/cli"
+
+
+def test_cli_repo_dir_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """EDGE:cli-repo-dir-override: config.repo_dir overrides git.REPO_DIR."""
+    monkeypatch.setattr("sys.argv", ["ham", "list"])
+    cfg = _config(repo_dir=Path("/custom/repos"))
+    with (
+        patch("ham.cli.load_config", return_value=cfg),
+        patch("ham.cli.git") as mock_git,
+        patch("ham.cli.detect_backend"),
+    ):
+        mock_git.list_worktrees.return_value = []
+        main()
+    assert mock_git.REPO_DIR == Path("/custom/repos")

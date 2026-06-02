@@ -13,6 +13,7 @@ from ham.actions import (
     SetupDirenv,
     SwitchWorkspace,
 )
+from ham.config import Config, build_layout_spec
 from ham.git import worktree_path
 
 if TYPE_CHECKING:
@@ -22,13 +23,18 @@ if TYPE_CHECKING:
 def _launch_actions(
     cwd: Path,
     *,
-    claude_continue: bool,
+    agent_continue: bool,
     workspace_id: str,
     backend: Backend,
+    repo: Path,
+    config: Config | None = None,
 ) -> list[Action]:
+    cfg = config or Config.defaults()
+    cont = agent_continue or cfg.agent_continue_default
+    spec = build_layout_spec(cfg, repo, agent_continue=cont)
     return [
         SetupDirenv(cwd=cwd),
-        *backend.layout_actions(cwd, workspace_id, claude_continue),
+        *backend.layout_actions(cwd, workspace_id, cont, spec),
     ]
 
 
@@ -43,6 +49,7 @@ def plan_open(
     start_point: str | None = None,
     workspace_id: str,
     backend: Backend,
+    config: Config | None = None,
 ) -> list[Action]:
     if not is_git_repo:
         raise ValueError(f"not a git repository: {repo}")
@@ -75,17 +82,30 @@ def plan_open(
     actions.extend(
         _launch_actions(
             wt_path,
-            claude_continue=worktree_exists,
+            agent_continue=worktree_exists,
             workspace_id=workspace_id,
             backend=backend,
+            repo=repo,
+            config=config,
         )
     )
     return actions
 
 
-def plan_open_repo(repo: Path, *, workspace_id: str, backend: Backend) -> list[Action]:
+def plan_open_repo(
+    repo: Path,
+    *,
+    workspace_id: str,
+    backend: Backend,
+    config: Config | None = None,
+) -> list[Action]:
     return _launch_actions(
-        repo, claude_continue=True, workspace_id=workspace_id, backend=backend
+        repo,
+        agent_continue=True,
+        workspace_id=workspace_id,
+        backend=backend,
+        repo=repo,
+        config=config,
     )
 
 
@@ -128,6 +148,7 @@ def plan_switch(
     remote_branch_exists: bool = False,
     backend: Backend,
     start_point: str | None = None,
+    config: Config | None = None,
 ) -> list[Action]:
     if workspace_id is not None:
         return [SwitchWorkspace(workspace_id=workspace_id)]
@@ -141,6 +162,7 @@ def plan_switch(
         start_point=start_point,
         workspace_id=free_workspace,
         backend=backend,
+        config=config,
     ) + [SwitchWorkspace(workspace_id=free_workspace)]
 
 
@@ -150,9 +172,10 @@ def plan_switch_repo(
     workspace_id: str | None,
     free_workspace: str,
     backend: Backend,
+    config: Config | None = None,
 ) -> list[Action]:
     if workspace_id is not None:
         return [SwitchWorkspace(workspace_id=workspace_id)]
-    return plan_open_repo(repo, workspace_id=free_workspace, backend=backend) + [
-        SwitchWorkspace(workspace_id=free_workspace)
-    ]
+    return plan_open_repo(
+        repo, workspace_id=free_workspace, backend=backend, config=config
+    ) + [SwitchWorkspace(workspace_id=free_workspace)]

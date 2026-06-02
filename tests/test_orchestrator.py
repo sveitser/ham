@@ -13,6 +13,9 @@ from ham.actions import (
     SetupDirenv,
     SwitchWorkspace,
 )
+from dataclasses import replace
+
+from ham.config import AgentRule, Config
 from ham.git import worktree_path
 from ham.orchestrator import (
     plan_close,
@@ -33,6 +36,13 @@ def _mock_backend():
         return_value=[LaunchProcess(cmd=["x"], workspace_id=WS_ID)]
     )
     return b
+
+
+def _assert_layout(backend, cwd, workspace_id, cont):
+    """layout_actions(cwd, workspace_id, cont, spec); ignore the spec arg."""
+    backend.layout_actions.assert_called_once()
+    args = backend.layout_actions.call_args[0]
+    assert args[:3] == (cwd, workspace_id, cont)
 
 
 def test_open_create_worktree_ok() -> None:
@@ -80,7 +90,7 @@ def test_open_launch_apps_new_worktree() -> None:
         workspace_id=WS_ID,
         backend=backend,
     )
-    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, False)
+    _assert_layout(backend, wt_path, WS_ID, False)
 
 
 def test_open_launch_apps_existing_worktree() -> None:
@@ -95,7 +105,7 @@ def test_open_launch_apps_existing_worktree() -> None:
         workspace_id=WS_ID,
         backend=backend,
     )
-    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, True)
+    _assert_layout(backend, wt_path, WS_ID, True)
 
 
 def test_open_sanitize_branch_ok() -> None:
@@ -365,7 +375,7 @@ def test_open_no_continue_new_worktree() -> None:
         backend=backend,
     )
     wt_path = worktree_path(REPO, "feat")
-    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, False)
+    _assert_layout(backend, wt_path, WS_ID, False)
 
 
 def test_open_claude_is_last() -> None:
@@ -430,9 +440,7 @@ def test_launch_workspace_pin_ok() -> None:
         workspace_id="7",
         backend=backend,
     )
-    backend.layout_actions.assert_called_once_with(
-        worktree_path(REPO, "feat"), "7", False
-    )
+    _assert_layout(backend, worktree_path(REPO, "feat"), "7", False)
 
 
 def test_launch_cwd_ok() -> None:
@@ -448,7 +456,7 @@ def test_launch_cwd_ok() -> None:
         workspace_id=WS_ID,
         backend=backend,
     )
-    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, True)
+    _assert_layout(backend, wt_path, WS_ID, True)
 
 
 def test_switch_order_ok() -> None:
@@ -482,7 +490,7 @@ def test_launch_claude_continue_ok() -> None:
         workspace_id=WS_ID,
         backend=backend,
     )
-    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, True)
+    _assert_layout(backend, wt_path, WS_ID, True)
 
 
 def test_launch_new_worktree_ok() -> None:
@@ -510,13 +518,13 @@ def test_open_repo_no_worktree_actions() -> None:
     assert not any(isinstance(a, GitWorktreeAdd) for a in actions)
     assert isinstance(actions[0], SetupDirenv)
     assert actions[0].cwd == REPO
-    backend.layout_actions.assert_called_once_with(REPO, WS_ID, True)
+    _assert_layout(backend, REPO, WS_ID, True)
 
 
 def test_open_repo_uses_repo_path() -> None:
     backend = _mock_backend()
     plan_open_repo(REPO, workspace_id=WS_ID, backend=backend)
-    backend.layout_actions.assert_called_once_with(REPO, WS_ID, True)
+    _assert_layout(backend, REPO, WS_ID, True)
 
 
 def test_switch_repo_focus_existing() -> None:
@@ -581,10 +589,70 @@ def test_plan_open_calls_layout_actions() -> None:
         workspace_id=WS_ID,
         backend=backend,
     )
-    backend.layout_actions.assert_called_once_with(wt_path, WS_ID, False)
+    _assert_layout(backend, wt_path, WS_ID, False)
 
 
 def test_plan_open_repo_calls_layout_actions() -> None:
     backend = _mock_backend()
     plan_open_repo(REPO, workspace_id=WS_ID, backend=backend)
-    backend.layout_actions.assert_called_once_with(REPO, WS_ID, True)
+    _assert_layout(backend, REPO, WS_ID, True)
+
+
+def _spec_from_call(backend):
+    return backend.layout_actions.call_args[0][3]
+
+
+def test_open_passes_spec_with_default_agent_when_no_config() -> None:
+    """config=None: layout_actions gets a spec whose agent_cmd is the default agent."""
+    backend = _mock_backend()
+    plan_open(
+        REPO,
+        "feat",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        workspace_id=WS_ID,
+        backend=backend,
+    )
+    spec = _spec_from_call(backend)
+    assert spec.agent_cmd == ["claude"]
+
+
+def test_open_passes_spec_with_matched_rule_agent() -> None:
+    """config with a matching [[agent]] rule: spec.agent_cmd reflects the rule."""
+    config = replace(
+        Config.defaults(),
+        agent_rules=(AgentRule(pattern="/fake/*", command=["claude-sandbox"]),),
+    )
+    backend = _mock_backend()
+    plan_open(
+        REPO,
+        "feat",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        workspace_id=WS_ID,
+        backend=backend,
+        config=config,
+    )
+    spec = _spec_from_call(backend)
+    assert spec.agent_cmd == ["claude-sandbox"]
+
+
+def test_open_agent_continue_default_forces_continue() -> None:
+    """agent_continue_default=True forces --continue even for a new worktree."""
+    config = replace(Config.defaults(), agent_continue_default=True)
+    backend = _mock_backend()
+    plan_open(
+        REPO,
+        "feat",
+        is_git_repo=True,
+        worktree_exists=False,
+        branch_exists=False,
+        workspace_id=WS_ID,
+        backend=backend,
+        config=config,
+    )
+    spec = _spec_from_call(backend)
+    assert spec.agent_cmd == ["claude", "--continue"]
+    assert backend.layout_actions.call_args[0][2] is True

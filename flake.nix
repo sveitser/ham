@@ -83,6 +83,7 @@
               (pkgs.python3.withPackages (ps: [
                 ps.pytest
                 ps.pytest-cov
+                ps.platformdirs
               ]))
               pkgs.ruff
               pkgs.just

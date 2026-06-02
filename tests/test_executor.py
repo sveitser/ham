@@ -254,7 +254,7 @@ def test_tmux_layout_creates_session() -> None:
         session_name="myrepo-feat",
         cwd=Path("/tmp/wt"),
         emacs_cmd=["direnv", "exec", "/tmp/wt", "emacs", "/tmp/wt"],
-        claude_cmd=["direnv", "exec", "/tmp/wt", "claude"],
+        agent_cmd=["direnv", "exec", "/tmp/wt", "claude"],
     )
     with patch("ham.executor.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1)
@@ -269,7 +269,7 @@ def test_tmux_layout_adds_window() -> None:
         session_name="myrepo-feat",
         cwd=Path("/tmp/wt"),
         emacs_cmd=["direnv", "exec", "/tmp/wt", "emacs", "/tmp/wt"],
-        claude_cmd=["direnv", "exec", "/tmp/wt", "claude"],
+        agent_cmd=["direnv", "exec", "/tmp/wt", "claude"],
     )
     with patch("ham.executor.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
@@ -284,7 +284,7 @@ def test_tmux_layout_splits_and_sends() -> None:
         session_name="myrepo-feat",
         cwd=Path("/tmp/wt"),
         emacs_cmd=["direnv", "exec", "/tmp/wt", "emacs", "/tmp/wt"],
-        claude_cmd=["direnv", "exec", "/tmp/wt", "claude"],
+        agent_cmd=["direnv", "exec", "/tmp/wt", "claude"],
     )
     with patch("ham.executor.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=1)
