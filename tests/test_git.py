@@ -1,6 +1,13 @@
 import pytest
 
-from ham.git import classify_porcelain, discover_repos, resolve_repo
+from pathlib import Path
+
+from ham.git import (
+    classify_porcelain,
+    discover_repos,
+    repo_from_gitfile,
+    resolve_repo,
+)
 
 
 def test_discover_repos(tmp_path):
@@ -40,6 +47,15 @@ def test_resolve_repo_multiple(tmp_path):
     (tmp_path / "org2" / "samename" / ".git").mkdir(parents=True)
     with pytest.raises(ValueError, match="multiple repos found"):
         resolve_repo("samename", tmp_path)
+
+
+def test_repo_from_gitfile():
+    contents = "gitdir: /home/u/r/org/repo/.git/worktrees/feat\n"
+    assert repo_from_gitfile(contents) == Path("/home/u/r/org/repo")
+
+
+def test_repo_from_gitfile_no_gitdir():
+    assert repo_from_gitfile("garbage\n") is None
 
 
 def test_classify_porcelain_empty():

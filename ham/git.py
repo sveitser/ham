@@ -1,5 +1,6 @@
 import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -80,23 +81,22 @@ def is_dirty(worktree_path: Path) -> tuple[bool, str]:  # pragma: no cover
     return (bool(output), output)
 
 
+def repo_from_gitfile(contents: str) -> Path | None:
+    """Parse a linked worktree's `.git` file ('gitdir: <repo>/.git/worktrees/<id>') into the repo path."""
+    for line in contents.splitlines():
+        if line.startswith("gitdir: "):
+            gitdir = Path(line[len("gitdir: ") :].strip())
+            return gitdir.parent.parent.parent
+    return None
+
+
 def _repo_path_from_worktree(wt_dir: Path) -> Path | None:  # pragma: no cover
-    """Resolve the parent repo path from a worktree directory via git-common-dir."""
-    result = subprocess.run(
-        [
-            "git",
-            "-C",
-            str(wt_dir),
-            "rev-parse",
-            "--path-format=absolute",
-            "--git-common-dir",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
+    """Resolve the parent repo path from a worktree's `.git` file (no subprocess)."""
+    try:
+        contents = (wt_dir / ".git").read_text()
+    except OSError:
         return None
-    return Path(result.stdout.strip()).parent
+    return repo_from_gitfile(contents)
 
 
 def resolve_from_cwd() -> tuple[Path, str] | None:  # pragma: no cover
@@ -162,31 +162,34 @@ def classify_porcelain(porcelain: str) -> tuple[bool, bool]:
     return has_modified, has_untracked
 
 
+def _worktree_status(branch_dir: Path) -> WorktreeStatus | None:  # pragma: no cover
+    repo = _repo_path_from_worktree(branch_dir)
+    if repo is None:
+        return None
+    _, status_text = is_dirty(branch_dir)
+    has_mod, has_untracked = classify_porcelain(status_text)
+    return WorktreeStatus(
+        repo=repo,
+        branch=branch_dir.name,
+        wt_path=branch_dir,
+        has_modified=has_mod,
+        has_untracked=has_untracked,
+    )
+
+
 def list_worktree_status() -> list[WorktreeStatus]:  # pragma: no cover
     if not DATA_DIR.exists():
         return []
-    results = []
-    for repo_dir in sorted(DATA_DIR.iterdir()):
-        if not repo_dir.is_dir():
-            continue
-        for branch_dir in sorted(repo_dir.iterdir()):
-            if not branch_dir.is_dir():
-                continue
-            repo = _repo_path_from_worktree(branch_dir)
-            if repo is None:
-                continue
-            _, status_text = is_dirty(branch_dir)
-            has_mod, has_untracked = classify_porcelain(status_text)
-            results.append(
-                WorktreeStatus(
-                    repo=repo,
-                    branch=branch_dir.name,
-                    wt_path=branch_dir,
-                    has_modified=has_mod,
-                    has_untracked=has_untracked,
-                )
-            )
-    return results
+    branch_dirs = [
+        branch_dir
+        for repo_dir in sorted(DATA_DIR.iterdir())
+        if repo_dir.is_dir()
+        for branch_dir in sorted(repo_dir.iterdir())
+        if branch_dir.is_dir()
+    ]
+    with ThreadPoolExecutor(max_workers=32) as ex:
+        results = ex.map(_worktree_status, branch_dirs)
+    return [r for r in results if r is not None]
 
 
 def list_worktrees() -> list[tuple[str, str]]:  # pragma: no cover
