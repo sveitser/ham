@@ -459,7 +459,7 @@ def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "--bind" in cmd
     bind = cmd[cmd.index("--bind") + 1]
     assert bind.startswith("ctrl-d:")
-    assert mock_run.call_args.kwargs["input"] == "wt: myrepo/feat\tM"
+    assert mock_run.call_args.kwargs["input"] == "wt: myrepo/feat\t\tM"
     mock_plan.assert_called_once()
 
 
@@ -502,7 +502,7 @@ def test_rofi_selection(monkeypatch: pytest.MonkeyPatch) -> None:
         main()
     mock_run.assert_called_once_with(
         ["rofi", "-dmenu", "-p", "ham", "-i"],
-        input="wt: myrepo/feat\t",
+        input="wt: myrepo/feat\t\t",
         capture_output=True,
         text=True,
     )
@@ -597,7 +597,32 @@ def test_ws_entries_in_picker(monkeypatch: pytest.MonkeyPatch) -> None:
     inp = mock_run.call_args.kwargs["input"]
     lines = inp.split("\n")
     assert lines[0] == "ws: 2\tAlacritty"
-    assert lines[1] == "wt: myrepo/feat\t"
+    assert lines[1] == "wt: myrepo/feat\t\t"
+
+
+def test_worktree_lines_sorts_newest_first() -> None:
+    from ham.cli import _worktree_lines
+
+    worktrees = [
+        _wt_status("a", "old"),
+        _wt_status("b", "new"),
+        _wt_status("c", "none"),
+    ]
+    mtimes = {
+        Path("/wt/a/old"): 100.0,
+        Path("/wt/b/new"): 200.0,
+        Path("/wt/c/none"): None,
+    }
+    with (
+        patch("ham.cli.recency.last_session_mtime", side_effect=mtimes.get),
+        patch("ham.cli.time.time", return_value=200.0),
+    ):
+        lines = _worktree_lines(worktrees)
+    assert lines == [
+        "wt: b/new\tnow\t",
+        "wt: a/old\t1m\t",
+        "wt: c/none\t\t",
+    ]
 
 
 def test_workspace_label_matches_worktree() -> None:
@@ -908,7 +933,7 @@ def test_entries_subcommand_prints(
         ]
         mock_git.discover_repos.return_value = [Path("/r/org/c")]
         main()
-    assert capsys.readouterr().out == "wt: a/main\t\nwt: b/feat\tM?\nrepo: c\t\n"
+    assert capsys.readouterr().out == "wt: a/main\t\t\nwt: b/feat\t\tM?\nrepo: c\t\t\n"
 
 
 def test_delete_strips_wt_prefix(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -3,10 +3,11 @@ import logging
 import shlex
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ham import git
+from ham import git, recency
 from ham.backend import detect_backend
 from ham.config import CONFIG_PATH, Config, init_config, load_config
 from ham.executor import execute
@@ -64,12 +65,25 @@ def _entry_flag(s: WorktreeStatus) -> str:
     return ("M" if s.has_modified else "") + ("?" if s.has_untracked else "")
 
 
+def _worktree_lines(worktrees: list[WorktreeStatus]) -> list[str]:
+    """Format worktrees as picker lines, newest Claude session first, with an age column."""
+    now = time.time()
+    dated = [(recency.last_session_mtime(s.wt_path), s) for s in worktrees]
+    dated.sort(key=lambda t: (t[0] is not None, t[0] or 0.0), reverse=True)
+    return [
+        f"wt: {s.repo_name}/{s.branch}\t{recency.format_age(m, now)}\t{_entry_flag(s)}"
+        for m, s in dated
+    ]
+
+
+def _repo_lines(repos: list[Path]) -> list[str]:
+    return [f"repo: {p.name}\t\t" for p in repos]
+
+
 def picker_entries() -> list[str]:
     worktrees = git.list_worktree_status()
     repos = git.discover_repos()
-    lines = [f"wt: {s.repo_name}/{s.branch}\t{_entry_flag(s)}" for s in worktrees]
-    lines += [f"repo: {p.name}\t" for p in repos]
-    return lines
+    return _worktree_lines(worktrees) + _repo_lines(repos)
 
 
 def _workspace_label(windows, worktrees) -> str:
@@ -109,9 +123,11 @@ def _get_selection(args: argparse.Namespace, backend) -> tuple[Path, str | None]
 
     worktrees = git.list_worktree_status()
     repos = git.discover_repos()
-    wt_lines = [f"wt: {s.repo_name}/{s.branch}\t{_entry_flag(s)}" for s in worktrees]
-    repo_lines = [f"repo: {p.name}\t" for p in repos]
-    entries = _workspace_entries(backend, worktrees) + wt_lines + repo_lines
+    entries = (
+        _workspace_entries(backend, worktrees)
+        + _worktree_lines(worktrees)
+        + _repo_lines(repos)
+    )
     if not entries:
         print("no worktrees or repos found", file=sys.stderr)
         raise SystemExit(1)
