@@ -1,0 +1,25 @@
+## Example ham config. Copy to the path printed by `ham init`; every key is optional.
+## `#`-prefixed lines are the built-in defaults (uncomment to change).
+## `##`-prefixed options have a dynamic default; the shown value is illustrative.
+
+# gui_editor = "emacs"
+# headless_editor = "emacs -nw"
+# readme_file = "README.md"
+# use_direnv = true
+# default_agent = "claude"
+# agent_continue_default = false
+
+## terminal: Hyprland only; default infers from $TERM_PROGRAM/$TERM, else alacritty.
+## terminal = "alacritty"
+
+## repo_dir: repo discovery root; default $HAM_REPO_DIR or ~/r.
+## repo_dir = "~/r"
+
+## default_start_point: base ref for new branches; default origin/main.
+## default_start_point = "origin/main"
+
+## [[agent]]: per-dir agent override. pattern globs the source repo path (~ expanded);
+## deepest match wins. Example:
+## [[agent]]
+## pattern = "~/r/work/*"
+## command = "claude --dangerously-skip-permissions"

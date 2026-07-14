@@ -184,3 +184,12 @@ def test_layout_spec_defaults() -> None:
 def test_agent_rule_dataclass() -> None:
     r = AgentRule(pattern="/r/*", command=["x"])
     assert r.pattern == "/r/*"
+
+
+def test_example_config_defaults_match() -> None:
+    """REQ:example-config-defaults: uncommented `#` lines equal built-in defaults."""
+    path = Path(__file__).parents[1] / "config.example.toml"
+    active = "\n".join(
+        line[2:] for line in path.read_text().splitlines() if line.startswith("# ")
+    )
+    assert _parse(tomllib.loads(active)) == Config.defaults()
