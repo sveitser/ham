@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 from unittest.mock import MagicMock, patch
@@ -7,7 +8,7 @@ import pytest
 from dataclasses import replace
 
 from ham.actions import SwitchWorkspace
-from ham.cli import _version_str, _workspace_label, main
+from ham.cli import _self_cmd, _version_str, _workspace_label, main
 from ham.config import Config
 from ham.git import WorktreeStatus
 from ham.hyprland import HyprlandWindow
@@ -432,7 +433,7 @@ def test_switch_with_query(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_switch_no_query_fzf(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("sys.argv", ["ham", "switch"])
+    monkeypatch.setattr("sys.argv", ["/nonexistent/ham", "switch"])
     fzf_result = CompletedProcess(
         args=["fzf"], returncode=0, stdout="wt: myrepo/feat\tM\n", stderr=""
     )
@@ -879,7 +880,7 @@ def test_delete_target_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_fzf_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
     """fzf returns non-zero, should raise SystemExit."""
-    monkeypatch.setattr("sys.argv", ["ham", "switch"])
+    monkeypatch.setattr("sys.argv", ["/nonexistent/ham", "switch"])
     fzf_result = CompletedProcess(args=["fzf"], returncode=130, stdout="", stderr="")
     backend = _mock_backend()
     with (
@@ -893,8 +894,13 @@ def test_fzf_cancelled(monkeypatch: pytest.MonkeyPatch) -> None:
             main()
 
 
-def test_default_no_command_runs_picker(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("sys.argv", ["ham"])
+def test_default_no_command_runs_picker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    script = tmp_path / "ham"
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o755)
+    monkeypatch.setattr("sys.argv", [str(script)])
     fzf_result = CompletedProcess(
         args=["fzf"], returncode=0, stdout="wt: a/main\t\n", stderr=""
     )
@@ -917,7 +923,7 @@ def test_default_no_command_runs_picker(monkeypatch: pytest.MonkeyPatch) -> None
     cmd = mock_run.call_args.args[0]
     assert cmd[0] == "fzf"
     bind = cmd[cmd.index("--bind") + 1]
-    assert bind.startswith("ctrl-d:")
+    assert bind.startswith(f"ctrl-d:execute({script.resolve()} ")
     assert "delete {1}" in bind and "_entries" in bind
     mock_plan.assert_called_once()
 
@@ -1193,3 +1199,23 @@ def test_cli_repo_dir_override(monkeypatch: pytest.MonkeyPatch) -> None:
         mock_git.list_worktrees.return_value = []
         main()
     assert mock_git.REPO_DIR == Path("/custom/repos")
+
+
+def test_self_cmd_installed_script(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """REG: nix console script sets sys.argv[0] to bin/ham; reuse it directly."""
+    script = tmp_path / "ham"
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o755)
+    monkeypatch.setattr("sys.argv", [str(script)])
+    assert _self_cmd() == [str(script.resolve())]
+
+
+def test_self_cmd_module_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A .py argv[0] falls back to `python -m ham.cli` even if executable."""
+    script = tmp_path / "cli.py"
+    script.write_text("#!/bin/sh\n")
+    script.chmod(0o755)
+    monkeypatch.setattr("sys.argv", [str(script)])
+    assert _self_cmd() == [sys.executable, "-m", "ham.cli"]

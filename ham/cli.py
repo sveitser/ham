@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 import shlex
 import subprocess
 import sys
@@ -42,6 +43,16 @@ def _version_str() -> str:
         except Exception:
             rev, ts = "dev", "unknown"
     return f"{VERSION}+{rev}.{ts}"
+
+
+def _self_cmd() -> list[str]:
+    """Command to re-invoke ham. sys.executable may not have `ham` importable
+    (nix console scripts inject site-packages inside the entry script), so
+    prefer the installed script itself when sys.argv[0] points to one."""
+    argv0 = Path(sys.argv[0])
+    if not argv0.name.endswith(".py") and argv0.is_file() and os.access(argv0, os.X_OK):
+        return [str(argv0.resolve())]
+    return [sys.executable, "-m", "ham.cli"]
 
 
 def _resolve_selection(selection: str) -> tuple[Path, str | None]:
@@ -135,7 +146,7 @@ def _get_selection(args: argparse.Namespace, backend) -> tuple[Path, str | None]
     if args.command == "rofi":
         cmd = ["rofi", "-dmenu", "-p", "ham", "-i"]
     else:
-        ham_cmd = shlex.join([sys.executable, "-m", "ham.cli"])
+        ham_cmd = shlex.join(_self_cmd())
         bind = f"ctrl-d:execute({ham_cmd} delete {{1}})+reload({ham_cmd} _entries)"
         cmd = [
             "fzf",
