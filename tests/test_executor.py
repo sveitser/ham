@@ -1,6 +1,6 @@
 from pathlib import Path
 from subprocess import CompletedProcess
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -151,7 +151,10 @@ def test_setup_direnv_copies_envrc_example(tmp_path: Path) -> None:
     ) as mock_run:
         execute([action])
     assert (tmp_path / ".envrc.local").read_text() == "use flake"
-    mock_run.assert_called_once_with(["direnv", "allow"], cwd=str(tmp_path))
+    assert mock_run.call_args_list == [
+        call(["direnv", "allow"], cwd=str(tmp_path)),
+        call(["direnv", "exec", str(tmp_path), "true"], cwd=str(tmp_path)),
+    ]
 
 
 def test_setup_direnv_skips_copy_when_local_exists(tmp_path: Path) -> None:
@@ -164,6 +167,19 @@ def test_setup_direnv_skips_copy_when_local_exists(tmp_path: Path) -> None:
     ) as mock_run:
         execute([action])
     assert (tmp_path / ".envrc.local").read_text() == "custom"
+    assert mock_run.call_args_list == [
+        call(["direnv", "allow"], cwd=str(tmp_path)),
+        call(["direnv", "exec", str(tmp_path), "true"], cwd=str(tmp_path)),
+    ]
+
+
+def test_setup_direnv_skips_warm_when_allow_fails(tmp_path: Path) -> None:
+    (tmp_path / ".envrc").write_text("use flake")
+    action = SetupDirenv(cwd=tmp_path)
+    with patch(
+        "ham.executor.subprocess.run", return_value=CompletedProcess([], 1)
+    ) as mock_run:
+        execute([action])
     mock_run.assert_called_once_with(["direnv", "allow"], cwd=str(tmp_path))
 
 

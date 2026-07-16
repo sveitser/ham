@@ -94,6 +94,9 @@ def _execute_one(action: Action, backend: str = "hyprland") -> None:
                 log.warning(
                     "direnv allow failed (rc=%d), continuing", result.returncode
                 )
+                return
+            log.info("warming direnv cache")
+            subprocess.run(["direnv", "exec", str(cwd), "true"], cwd=str(cwd))
 
         case LaunchProcess(cmd, workspace_id, _):
             shell_cmd = " ".join(shlex.quote(c) for c in cmd)
